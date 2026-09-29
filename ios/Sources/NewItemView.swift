@@ -313,10 +313,13 @@ struct NewItemView: View {
         generating = true
         defer { if draftRequestID == requestID { generating = false } }
         do {
-            let session = LanguageModelSession(model: model)
+            let session = LanguageModelSession(
+                model: model,
+                instructions: "Convert the user's request to one task or one project with subtasks. A shopping list is a project; every named item becomes a subtask. Do not invent items, dates, or times. The start date is absent by default, even if a due date is given; never fill it with today unless the user explicitly asks to start today. Only include a start time if the request explicitly says when work can begin on its start date. If no due date is specified, leave it empty. Notes may contain only extra details supplied by the user, never these instructions."
+            )
             let today = TodoDates.string(from: Date())
             let response = try await session.respond(
-                to: "Today is \(today), for resolving relative dates only. Convert this request to one task or one project with subtasks. A shopping list is a project; every named item becomes a subtask. Do not invent items, dates, or times. The start date is absent by default, even if a due date is given; never fill it with today unless the user explicitly asks to start today. Only include a start time if the request explicitly says when work can begin on its start date. If no due date is specified, leave it empty. Request: \(requestText)",
+                to: "Today is \(today), for resolving relative dates only. User request: \(requestText)",
                 generating: GeneratedQuickAdd.self
             )
             guard !Task.isCancelled, draftRequestID == requestID else { return }
@@ -328,7 +331,7 @@ struct NewItemView: View {
             case .project: draftKind = .project
             }
             title = newTitle
-            notes = result.notes
+            notes = QuickAddNotes.cleaned(result.notes)
             let generatedStart = result.hasExplicitStartDate ? Self.validDate(result.startDate) : nil
             hasStart = generatedStart != nil
             if let generatedStart { start = generatedStart }

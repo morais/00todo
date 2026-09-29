@@ -13,7 +13,7 @@ struct ProjectDraft {
     init(project: TodoProject? = nil) {
         if let project {
             name = project.name
-            notes = project.notes
+            notes = QuickAddNotes.cleaned(project.notes)
             hasStart = project.startDate != nil
             start = TodoDates.date(from: project.startDate)
             hasStartTime = project.startTime != nil
@@ -79,11 +79,15 @@ struct ProjectEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft: ProjectDraft
     @State private var saving = false
+    @State private var deleting = false
+    @State private var confirmDelete = false
     @State private var errorText: String?
     let project: TodoProject?
+    let onDelete: (() -> Void)?
 
-    init(project: TodoProject? = nil) {
+    init(project: TodoProject? = nil, onDelete: (() -> Void)? = nil) {
         self.project = project
+        self.onDelete = onDelete
         _draft = State(initialValue: ProjectDraft(project: project))
     }
 
@@ -107,6 +111,22 @@ struct ProjectEditor: View {
                     DatePicker("Due", selection: $draft.due, displayedComponents: .date)
                 }
             }
+            if let project {
+                Section {
+                    Button {
+                        Task { await store.toggle(store.projects.first(where: { $0.id == project.id }) ?? project) }
+                    } label: {
+                        let current = store.projects.first(where: { $0.id == project.id }) ?? project
+                        Label(current.completedAt == nil ? "Complete project" : "Reopen project",
+                              systemImage: current.completedAt == nil ? "checkmark.circle" : "arrow.uturn.backward.circle")
+                    }
+                    .disabled(saving || deleting)
+                    Button(role: .destructive) { confirmDelete = true } label: {
+                        Label("Delete project", systemImage: "trash")
+                    }
+                    .disabled(saving || deleting)
+                }
+            }
         }
         .navigationTitle(project == nil ? "New project" : "Edit project")
         .navigationBarTitleDisplayMode(.inline)
@@ -114,10 +134,24 @@ struct ProjectEditor: View {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save() }
-                    .disabled(saving || draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(saving || deleting || draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
-        .alert("Couldn't save", isPresented: Binding(
+        .confirmationDialog("Delete project? Its subtasks will become standalone tasks.", isPresented: $confirmDelete) {
+            Button("Delete project", role: .destructive) {
+                guard let project else { return }
+                deleting = true
+                Task {
+                    defer { deleting = false }
+                    do {
+                        try await store.deleteProject(project.id)
+                        onDelete?()
+                        dismiss()
+                    } catch { errorText = error.localizedDescription }
+                }
+            }
+        }
+        .alert("Couldn't update project", isPresented: Binding(
             get: { errorText != nil }, set: { if !$0 { errorText = nil } }
         )) { Button("OK", role: .cancel) {} } message: { Text(errorText ?? "") }
     }
@@ -142,9 +176,8 @@ struct ProjectTasksView: View {
     let project: TodoProject
     @State private var showNewTask = false
     @State private var showEdit = false
-    @State private var showDelete = false
+    @State private var projectWasDeleted = false
     @State private var showUpcoming = false
-    @State private var errorText: String?
     @State private var now = Date()
 
     private var items: [TodoTask] {
@@ -174,8 +207,9 @@ struct ProjectTasksView: View {
     var body: some View {
         List {
             let current = store.projects.first(where: { $0.id == project.id }) ?? project
-            if !current.notes.isEmpty {
-                Section { Text(current.notes) }
+            let visibleNotes = QuickAddNotes.cleaned(current.notes)
+            if !visibleNotes.isEmpty {
+                Section { Text(visibleNotes) }
             }
             if items.isEmpty && upcomingItems.isEmpty && completedItems.isEmpty {
                 ContentUnavailableView("No tasks", systemImage: "checklist")
@@ -219,38 +253,24 @@ struct ProjectTasksView: View {
         }
         .navigationTitle(store.projects.first(where: { $0.id == project.id })?.name ?? project.name)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { showNewTask = true } label: { Label("New task", systemImage: "plus") }
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                Menu {
-                    Button("Edit project") { showEdit = true }
-                    Button((store.projects.first(where: { $0.id == project.id }) ?? project).completedAt == nil ? "Complete project" : "Reopen project") {
-                        Task { await store.toggle(store.projects.first(where: { $0.id == project.id }) ?? project) }
-                    }
-                    Button("Delete project", role: .destructive) { showDelete = true }
-                } label: { Label("Project actions", systemImage: "ellipsis.circle") }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { showEdit = true } label: { Image(systemName: "pencil") }
+                    .accessibilityLabel("Edit project")
+                Button { showNewTask = true } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("New task")
             }
         }
         .sheet(isPresented: $showNewTask) {
             NavigationStack { NewItemView(initialProjectId: project.id) }
         }
-        .sheet(isPresented: $showEdit) {
+        .sheet(isPresented: $showEdit, onDismiss: {
+            if projectWasDeleted { dismiss() }
+        }) {
             NavigationStack {
-                ProjectEditor(project: store.projects.first(where: { $0.id == project.id }) ?? project)
+                ProjectEditor(project: store.projects.first(where: { $0.id == project.id }) ?? project,
+                              onDelete: { projectWasDeleted = true })
             }
         }
-        .confirmationDialog("Delete project? Its subtasks will become standalone tasks.", isPresented: $showDelete) {
-            Button("Delete project", role: .destructive) {
-                Task {
-                    do { try await store.deleteProject(project.id); dismiss() }
-                    catch { errorText = error.localizedDescription }
-                }
-            }
-        }
-        .alert("Couldn't save", isPresented: Binding(
-            get: { errorText != nil }, set: { if !$0 { errorText = nil } }
-        )) { Button("OK", role: .cancel) {} } message: { Text(errorText ?? "") }
         .refreshable { await store.refresh() }
         .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { now = $0 }
         .onChange(of: scenePhase) { _, phase in if phase == .active { now = Date() } }

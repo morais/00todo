@@ -80,6 +80,13 @@ struct TaskEditor: View {
                         Text(project.name).tag(Optional(project.id))
                     }
                 }
+                if task != nil, let project = store.projects.first(where: { $0.id == draft.projectId }) {
+                    NavigationLink {
+                        ProjectTasksView(project: project)
+                    } label: {
+                        Label("Open project", systemImage: "folder")
+                    }
+                }
             }
 
             if let task {

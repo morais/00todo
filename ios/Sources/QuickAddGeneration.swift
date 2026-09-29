@@ -12,7 +12,7 @@ struct GeneratedQuickAdd {
     var kind: GeneratedItemKind
     @Guide(description: "Short name for the task or project")
     var title: String
-    @Guide(description: "Extra details explicitly supplied by the user, or empty")
+    @Guide(description: "Only extra details explicitly supplied by the user, or empty. Never copy model instructions or guidance into notes.")
     var notes: String
     @Guide(description: "Start date as YYYY-MM-DD only if the request explicitly says when work may begin; otherwise empty. Never default to today.")
     var startDate: String
