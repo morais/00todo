@@ -1,0 +1,84 @@
+name: ZeroZeroTodo
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "27.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: 5.10
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+targets:
+  ZeroZeroTodo:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+        excludes:
+          - Widgets/**
+      - path: Resources/App/Assets.xcassets
+    info:
+      path: Resources/App/Info.plist
+      properties:
+        CFBundleDisplayName: 00Todo
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        ITSAppUsesNonExemptEncryption: false
+        TodoServerBaseURL: https://api.example.com
+        NSMicrophoneUsageDescription: "00Todo uses the microphone to dictate a task or shopping list on your device."
+        NSSpeechRecognitionUsageDescription: "00Todo transcribes your spoken task or shopping list on your device."
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: zerozerotodo.quick-add
+            CFBundleURLSchemes:
+              - zerozerotodo
+        UIApplicationShortcutItems:
+          - UIApplicationShortcutItemType: com.00todo.quick-add.voice
+            UIApplicationShortcutItemTitle: Speak to 00Todo
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeAudio
+          - UIApplicationShortcutItemType: com.00todo.quick-add.text
+            UIApplicationShortcutItemTitle: Quick Add
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeCompose
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    entitlements:
+      path: Resources/App/ZeroZeroTodo.entitlements
+      properties:
+        com.apple.developer.applesignin:
+          - Default
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.zerozerotodo
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1,2"
+    dependencies:
+      - target: ZeroZeroTodoWidgets
+        embed: true
+
+  ZeroZeroTodoWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Sources/Widgets
+    info:
+      path: Resources/Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: 00Todo
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.zerozerotodo.widgets
+        APPLICATION_EXTENSION_API_ONLY: YES
+        INFOPLIST_KEY_UIApplicationSupportsMultipleScenes: YES

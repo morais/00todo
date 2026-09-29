@@ -1,0 +1,34 @@
+name = "00todo-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-27"
+workers_dev = false
+preview_urls = false
+
+[vars]
+# Start dates/times are compared in this time zone when an API caller omits
+# ?today=YYYY-MM-DD&time=HH:mm. iOS uses the device's local clock.
+DEFAULT_TIME_ZONE = "UTC"
+PUBLIC_ORIGIN = "https://api.example.com"
+# Native App ID (bundle ID) and web Services ID must be associated with the
+# same Sign in with Apple primary app in your Apple Developer account.
+APPLE_APP_CLIENT_ID = "com.example.zerozerotodo"
+APPLE_WEB_CLIENT_ID = "com.example.zerozerotodo.web"
+APPLE_WEB_REDIRECT_URI = "https://api.example.com/auth/apple/callback"
+APPLE_TEAM_ID = "REPLACE_WITH_APPLE_TEAM_ID"
+APPLE_KEY_ID = "REPLACE_WITH_SIGN_IN_WITH_APPLE_KEY_ID"
+# APPLE_PRIVATE_KEY and OAUTH_SIGNING_SECRET are Wrangler secrets, not vars.
+
+# Replace with the hostname you own before deployment. The planned production
+# host is 00todo.com; api.example.com keeps this public sample deploy-safe.
+[[routes]]
+pattern = "api.example.com"
+custom_domain = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "00todo"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[observability]
+enabled = true

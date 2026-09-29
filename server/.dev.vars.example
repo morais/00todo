@@ -1,0 +1,4 @@
+# Copy to .dev.vars. Use a Sign in with Apple private key from the Apple
+# Developer portal (PEM content); keep this file gitignored.
+APPLE_PRIVATE_KEY=REPLACE_WITH_APPLE_SIGN_IN_PRIVATE_KEY
+OAUTH_SIGNING_SECRET=REPLACE_WITH_RANDOM_HEX_32_BYTES
