@@ -32,6 +32,16 @@ import Foundation
         let twoDays = Calendar.current.date(byAdding: .day, value: 2, to: Date())!
         precondition(TodoDates.startLabel(date: TodoDates.string(from: tomorrow), time: nil) == "Starts tomorrow")
         precondition(TodoDates.startLabel(date: TodoDates.string(from: twoDays), time: "09:30") == "Starts in 2 days at 09:30")
+        let today = Calendar.current.startOfDay(for: now)
+        func startDate(_ days: Int) -> String {
+            TodoDates.string(from: Calendar.current.date(byAdding: .day, value: days, to: today)!)
+        }
+        precondition(TodoDates.upcomingGroup(for: startDate(1), at: now) == .tomorrow)
+        precondition(TodoDates.upcomingGroup(for: startDate(2), at: now) == .sevenDays)
+        precondition(TodoDates.upcomingGroup(for: startDate(7), at: now) == .sevenDays)
+        precondition(TodoDates.upcomingGroup(for: startDate(8), at: now) == .fourteenDays)
+        precondition(TodoDates.upcomingGroup(for: startDate(15), at: now) == .thirtyDays)
+        precondition(TodoDates.upcomingGroup(for: startDate(31), at: now) == .future)
         print("Widget snapshot tests passed")
     }
 }

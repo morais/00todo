@@ -55,6 +55,7 @@ private struct AppleLoginResponse: Decodable {
         } else if token.isEmpty || tenantId == nil {
             WidgetSnapshotStore.clear()
             WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
+            Task { await AvailableBadge.clear() }
         }
     }
 
@@ -94,6 +95,7 @@ private struct AppleLoginResponse: Decodable {
             try? FileManager.default.removeItem(at: Self.cacheURL)
             WidgetSnapshotStore.clear()
             WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
+            await AvailableBadge.clear()
         }
         token = login.token
         accountEmail = login.tenant.email
@@ -130,6 +132,33 @@ private struct AppleLoginResponse: Decodable {
         try? FileManager.default.removeItem(at: Self.cacheURL)
         WidgetSnapshotStore.clear()
         WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
+        Task { await AvailableBadge.clear() }
+    }
+
+    private var widgetSnapshot: WidgetSnapshot {
+        WidgetSnapshot(
+            projects: projects.map { WidgetProject(id: $0.id, name: $0.name, startDate: $0.startDate,
+                                                  startTime: $0.startTime, dueDate: $0.dueDate,
+                                                  completedAt: $0.completedAt, sortOrder: $0.sortOrder, createdAt: $0.createdAt) },
+            tasks: tasks.map { WidgetTask(id: $0.id, title: $0.title, projectId: $0.projectId,
+                                          startDate: $0.startDate, startTime: $0.startTime,
+                                          dueDate: $0.dueDate, completedAt: $0.completedAt,
+                                          sortOrder: $0.sortOrder, createdAt: $0.createdAt) }
+        )
+    }
+
+    private var expandProjects: Bool {
+        UserDefaults.standard.object(forKey: "showProjectTasksInLists") as? Bool ?? true
+    }
+
+    func syncBadge() async {
+        guard isConfigured else { return }
+        await AvailableBadge.sync(snapshot: widgetSnapshot, expandProjects: expandProjects)
+    }
+
+    func updateCurrentBadge(at now: Date = Date()) async {
+        guard isConfigured else { return }
+        await AvailableBadge.updateCurrent(snapshot: widgetSnapshot, expandProjects: expandProjects, at: now)
     }
 
     func refresh() async {
@@ -144,18 +173,10 @@ private struct AppleLoginResponse: Decodable {
                 try? FileManager.default.createDirectory(at: Self.cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try? data.write(to: Self.cacheURL, options: .atomic)
             }
-            let widgetSnapshot = WidgetSnapshot(
-                projects: projects.map { WidgetProject(id: $0.id, name: $0.name, startDate: $0.startDate,
-                                                      startTime: $0.startTime, dueDate: $0.dueDate,
-                                                      completedAt: $0.completedAt, sortOrder: $0.sortOrder, createdAt: $0.createdAt) },
-                tasks: tasks.map { WidgetTask(id: $0.id, title: $0.title, projectId: $0.projectId,
-                                              startDate: $0.startDate, startTime: $0.startTime,
-                                              dueDate: $0.dueDate, completedAt: $0.completedAt,
-                                              sortOrder: $0.sortOrder, createdAt: $0.createdAt) }
-            )
             if WidgetSnapshotStore.save(widgetSnapshot) {
                 WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
             }
+            await syncBadge()
             message = nil
         } catch {
             message = error.localizedDescription
@@ -178,12 +199,14 @@ private struct AppleLoginResponse: Decodable {
         guard let index = tasks.firstIndex(where: { $0.id == item.id }) else { return }
         let previous = tasks[index]
         tasks[index].completedAt = previous.completedAt == nil ? ISO8601DateFormatter().string(from: Date()) : nil
+        await updateCurrentBadge()
         do {
             let response: TaskResponse = try await request("/v1/tasks/\(item.id)", method: "PATCH", body: ["completed": previous.completedAt == nil])
             if let current = tasks.firstIndex(where: { $0.id == item.id }) { tasks[current] = response.task }
             await refresh()
         } catch {
             if let current = tasks.firstIndex(where: { $0.id == item.id }) { tasks[current] = previous }
+            await updateCurrentBadge()
             message = error.localizedDescription
         }
     }
@@ -225,12 +248,14 @@ private struct AppleLoginResponse: Decodable {
         guard let index = projects.firstIndex(where: { $0.id == item.id }) else { return }
         let previous = projects[index]
         projects[index].completedAt = previous.completedAt == nil ? ISO8601DateFormatter().string(from: Date()) : nil
+        await updateCurrentBadge()
         do {
             let response: ProjectResponse = try await request("/v1/projects/\(item.id)", method: "PATCH", body: ["completed": previous.completedAt == nil])
             if let current = projects.firstIndex(where: { $0.id == item.id }) { projects[current] = response.project }
             await refresh()
         } catch {
             if let current = projects.firstIndex(where: { $0.id == item.id }) { projects[current] = previous }
+            await updateCurrentBadge()
             message = error.localizedDescription
         }
     }

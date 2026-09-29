@@ -173,18 +173,12 @@ struct TasksView: View {
 
     private var upcomingSections: [(title: String, items: [ListItem])] {
         let parents = Dictionary(uniqueKeysWithValues: store.projects.map { ($0.id, $0) })
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: now)
-        let seven = TodoDates.string(from: calendar.date(byAdding: .day, value: 7, to: today) ?? today)
-        let fourteen = TodoDates.string(from: calendar.date(byAdding: .day, value: 14, to: today) ?? today)
-        let thirty = TodoDates.string(from: calendar.date(byAdding: .day, value: 30, to: today) ?? today)
-        var groups = [[ListItem]](repeating: [], count: 4)
+        var groups = [[ListItem]](repeating: [], count: UpcomingGroup.allCases.count)
         for item in visibleItems {
             let start = String((effectiveStartKey(for: item, parents: parents) ?? "9999-12-31").prefix(10))
-            let index = start <= seven ? 0 : start <= fourteen ? 1 : start <= thirty ? 2 : 3
-            groups[index].append(item)
+            groups[TodoDates.upcomingGroup(for: start, at: now).rawValue].append(item)
         }
-        return zip(["Next 7 days", "Next 2 weeks", "Next 30 days", "Future"], groups)
+        return zip(UpcomingGroup.allCases.map(\.title), groups)
             .filter { !$0.1.isEmpty }
             .map { (title: $0.0, items: $0.1) }
     }
@@ -250,8 +244,12 @@ struct TasksView: View {
                 }
             }
             .refreshable { await store.refresh() }
-            .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { now = $0 }
+            .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) {
+                now = $0
+                Task { await store.updateCurrentBadge(at: now) }
+            }
             .onChange(of: scenePhase) { _, phase in if phase == .active { now = Date() } }
+            .onChange(of: showProjectTasks) { _, _ in Task { await store.syncBadge() } }
             .sheet(isPresented: $showNewItem) { NavigationStack { NewItemView() } }
             .sheet(item: $pendingQuickAdd) { launch in
                 NavigationStack { NewItemView(initialKind: .quickAdd, startWithVoice: launch == .voice) }

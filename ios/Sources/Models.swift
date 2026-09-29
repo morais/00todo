@@ -50,6 +50,20 @@ struct MCPConnection: Codable, Identifiable, Equatable {
     var expiresAt: String
 }
 
+enum UpcomingGroup: Int, CaseIterable {
+    case tomorrow, sevenDays, fourteenDays, thirtyDays, future
+
+    var title: String {
+        switch self {
+        case .tomorrow: "Tomorrow"
+        case .sevenDays: "Next 7 days"
+        case .fourteenDays: "Next 2 weeks"
+        case .thirtyDays: "Next 30 days"
+        case .future: "Future"
+        }
+    }
+}
+
 enum TodoDates {
     static func string(from date: Date) -> String {
         let pieces = Calendar.current.dateComponents([.year, .month, .day], from: date)
@@ -80,6 +94,20 @@ enum TodoDates {
         let today = string(from: now)
         if startDate != today { return startDate < today }
         return startTime.map { $0 <= timeString(from: now) } ?? true
+    }
+
+    static func upcomingGroup(for startDate: String?, at now: Date) -> UpcomingGroup {
+        guard let startDate else { return .future }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        func day(_ offset: Int) -> String {
+            string(from: calendar.date(byAdding: .day, value: offset, to: today) ?? today)
+        }
+        if startDate == day(1) { return .tomorrow }
+        if startDate <= day(7) { return .sevenDays }
+        if startDate <= day(14) { return .fourteenDays }
+        if startDate <= day(30) { return .thirtyDays }
+        return .future
     }
 
     static func startLabel(date: String, time: String?) -> String {
