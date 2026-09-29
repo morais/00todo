@@ -1,95 +1,150 @@
+import AppIntents
 import SwiftUI
 import WidgetKit
 
-private struct QuickAddEntry: TimelineEntry {
+struct AvailableWidgetConfiguration: WidgetConfigurationIntent {
+    static var title: LocalizedStringResource = "00Todo Available"
+    static var description = IntentDescription("Show available tasks and projects.")
+
+    @Parameter(title: "Expand projects", default: true)
+    var expandProjects: Bool
+}
+
+private struct AvailableEntry: TimelineEntry {
     let date: Date
+    let items: [WidgetItem]
 }
 
-private struct QuickAddProvider: TimelineProvider {
-    func placeholder(in context: Context) -> QuickAddEntry { QuickAddEntry(date: .now) }
-    func getSnapshot(in context: Context, completion: @escaping (QuickAddEntry) -> Void) {
-        completion(QuickAddEntry(date: .now))
+private struct AvailableProvider: AppIntentTimelineProvider {
+    func placeholder(in context: Context) -> AvailableEntry {
+        AvailableEntry(date: .now, items: [])
     }
-    func getTimeline(in context: Context, completion: @escaping (Timeline<QuickAddEntry>) -> Void) {
-        completion(Timeline(entries: [QuickAddEntry(date: .now)], policy: .never))
+
+    func snapshot(for configuration: AvailableWidgetConfiguration, in context: Context) async -> AvailableEntry {
+        entry(at: .now, expandProjects: configuration.expandProjects)
+    }
+
+    func timeline(for configuration: AvailableWidgetConfiguration, in context: Context) async -> Timeline<AvailableEntry> {
+        let now = Date()
+        let snapshot = WidgetSnapshotStore.load()
+        let changes = snapshot?.upcomingStartDates(after: now) ?? []
+        let dates = [now] + changes.filter { $0 < now.addingTimeInterval(30 * 24 * 60 * 60) }
+        let entries = dates.map { date in entry(at: date, expandProjects: configuration.expandProjects, snapshot: snapshot) }
+        return Timeline(entries: entries, policy: .after(now.addingTimeInterval(6 * 60 * 60)))
+    }
+
+    private func entry(at date: Date, expandProjects: Bool, snapshot: WidgetSnapshot? = nil) -> AvailableEntry {
+        AvailableEntry(date: date, items: (snapshot ?? WidgetSnapshotStore.load())?.availableItems(at: date, expandProjects: expandProjects) ?? [])
     }
 }
 
-private struct QuickAddWidgetView: View {
+private struct AvailableWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    let entry: AvailableEntry
+
     private let voiceURL = URL(string: "zerozerotodo://quick-add/voice")!
     private let textURL = URL(string: "zerozerotodo://quick-add/text")!
 
+    private var rowLimit: Int {
+        switch family {
+        case .systemMedium: 3
+        case .systemLarge: 7
+        case .systemExtraLarge: 12
+        default: 0
+        }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 7) {
-                Image(systemName: "checkmark.square.fill")
-                    .foregroundStyle(Color(red: 0.34, green: 0.69, blue: 1))
+        VStack(alignment: .leading, spacing: family == .systemSmall ? 4 : 10) {
+            HStack {
+                Label("00Todo", systemImage: "checkmark.square.fill")
+                    .font(family == .systemSmall ? .subheadline.bold() : .headline.bold())
+                    .foregroundStyle(.white)
+                Spacer(minLength: 0)
                 if family != .systemSmall {
-                    Text("00Todo")
-                        .font(.headline)
-                        .fontWeight(.bold)
+                    Text("\(entry.items.count) available")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.72))
                 }
             }
-            .foregroundStyle(.white)
 
-            if family == .systemMedium {
-                Text("A thought, a task, a shopping list.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.78))
+            if family == .systemSmall {
+                Spacer(minLength: 0)
+                Text(entry.items.count, format: .number)
+                    .font(.system(size: 54, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.6)
+                    .accessibilityLabel("\(entry.items.count) available items")
+                Spacer(minLength: 0)
+            } else if entry.items.isEmpty {
+                Spacer(minLength: 0)
+                Label("All clear", systemImage: "checkmark.circle")
+                    .foregroundStyle(.white.opacity(0.8))
+                Spacer(minLength: 0)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(entry.items.prefix(rowLimit)) { item in
+                        HStack(alignment: .firstTextBaseline, spacing: 7) {
+                            Image(systemName: item.isProject ? "folder" : "circle")
+                                .font(.caption)
+                                .foregroundStyle(Color(red: 0.42, green: 0.76, blue: 1))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(item.title)
+                                    .lineLimit(1)
+                                    .font(.subheadline)
+                                if family != .systemMedium, let projectName = item.projectName {
+                                    Text(projectName).font(.caption2).foregroundStyle(.white.opacity(0.65)).lineLimit(1)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                    }
+                    if entry.items.count > rowLimit {
+                        Text("+ \(entry.items.count - rowLimit) more")
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.65))
+                    }
+                }
+                .foregroundStyle(.white)
+                Spacer(minLength: 0)
             }
-
-            Spacer(minLength: 0)
 
             HStack(spacing: 8) {
                 Link(destination: voiceURL) {
-                    Group {
-                        if family == .systemSmall {
-                            Image(systemName: "mic.fill")
-                        } else {
-                            Label("Speak", systemImage: "mic.fill")
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
+                    Image(systemName: "mic.fill")
+                        .frame(maxWidth: .infinity)
                 }
                 .accessibilityLabel("Speak to 00Todo")
                 Link(destination: textURL) {
-                    Group {
-                        if family == .systemSmall {
-                            Image(systemName: "square.and.pencil")
-                        } else {
-                            Label("Type", systemImage: "square.and.pencil")
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
+                    Image(systemName: "plus")
+                        .frame(maxWidth: .infinity)
                 }
-                .accessibilityLabel("Type a Quick Add")
+                .accessibilityLabel("Quick Add")
             }
-            .font((family == .systemSmall ? Font.title3 : Font.subheadline).weight(.semibold))
-            .labelStyle(.titleAndIcon)
+            .font(.subheadline.weight(.semibold))
             .foregroundStyle(.white)
-            .padding(.vertical, 10)
-            .background(.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 12))
+            .padding(.vertical, family == .systemSmall ? 6 : 8)
+            .background(.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 10))
         }
-        .padding(14)
+        .padding(family == .systemSmall ? 12 : 14)
         .containerBackground(Color(red: 0.07, green: 0.17, blue: 0.31), for: .widget)
         .widgetURL(textURL)
     }
 }
 
-private struct QuickAddWidget: Widget {
-    let kind = "QuickAddWidget"
+private struct AvailableTodoWidget: Widget {
+    let kind = WidgetSnapshotStore.widgetKind
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: QuickAddProvider()) { _ in
-            QuickAddWidgetView()
+        AppIntentConfiguration(kind: kind, intent: AvailableWidgetConfiguration.self, provider: AvailableProvider()) { entry in
+            AvailableWidgetView(entry: entry)
         }
-        .configurationDisplayName("00Todo Quick Add")
-        .description("Speak or type a task or shopping list.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .configurationDisplayName("00Todo Available")
+        .description("See available items. Choose whether to expand projects in Edit Widget.")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
     }
 }
 
 @main struct ZeroZeroTodoWidgetBundle: WidgetBundle {
-    var body: some Widget { QuickAddWidget() }
+    var body: some Widget { AvailableTodoWidget() }
 }

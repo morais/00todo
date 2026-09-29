@@ -1,8 +1,10 @@
+import FoundationModels
 import SwiftUI
 
-private enum NewItemKind: String, CaseIterable, Identifiable {
+enum NewItemKind: String, CaseIterable, Identifiable {
     case task = "Task"
     case project = "Project"
+    case quickAdd = "Quick Add"
 
     var id: Self { self }
 }
@@ -17,6 +19,17 @@ struct NewItemView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var kind: NewItemKind = .task
+    @State private var draftKind: NewItemKind = .task
+    @State private var prompt = ""
+    @State private var promptBeforeDictation = ""
+    @State private var voicePromptPending: String?
+    @State private var voice = VoiceCapture()
+    @State private var silenceTask: Task<Void, Never>?
+    @State private var draftTask: Task<Void, Never>?
+    @State private var draftRequestID = UUID()
+    @State private var draftFailed = false
+    @State private var hasPreview = false
+    @State private var generating = false
     @State private var title = ""
     @State private var notes = ""
     @State private var hasStart = false
@@ -30,9 +43,13 @@ struct NewItemView: View {
     @State private var saving = false
     @State private var errorText: String?
     @FocusState private var titleFocused: Bool
+    @FocusState private var promptFocused: Bool
+    let startWithVoice: Bool
 
-    init(initialProjectId: String? = nil) {
+    init(initialProjectId: String? = nil, initialKind: NewItemKind = .task, startWithVoice: Bool = false) {
         _projectId = State(initialValue: initialProjectId)
+        _kind = State(initialValue: initialKind)
+        self.startWithVoice = startWithVoice
     }
 
     private var cleanedTitle: String {
@@ -45,15 +62,58 @@ struct NewItemView: View {
     }
 
     private var canSave: Bool {
-        let titleLimit = kind == .project ? 120 : 240
-        return !saving && !cleanedTitle.isEmpty && cleanedTitle.count <= titleLimit
+        let titleLimit = effectiveKind == .project ? 120 : 240
+        return (kind != .quickAdd || hasPreview) && !saving && !generating
+            && !cleanedTitle.isEmpty && cleanedTitle.count <= titleLimit
             && notes.count <= 20_000
-            && cleanedSubtasks.count <= 50
-            && cleanedSubtasks.allSatisfy { $0.count <= 240 }
+            && (effectiveKind != .project || (cleanedSubtasks.count <= 50
+                && cleanedSubtasks.allSatisfy { $0.count <= 240 }))
     }
 
     var body: some View {
         Form {
+            if kind == .quickAdd {
+                Section {
+                    HStack(spacing: 8) {
+                        TextField("What would you like to add?", text: $prompt, axis: .vertical)
+                            .lineLimit(2...5)
+                            .focused($promptFocused)
+                            .disabled(voice.isRecording || voice.isPreparing || saving)
+                        Button {
+                            if voice.isRecording { voice.stop() } else { beginVoice() }
+                        } label: {
+                            Image(systemName: voice.isRecording ? "stop.fill" : "mic.fill")
+                                .font(.title3)
+                                .foregroundStyle(voice.isRecording ? Color.red : Color.accentColor)
+                                .frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(voice.isRecording ? "Finish speaking" : "Speak your request")
+                        .disabled(saving || voice.isPreparing)
+                    }
+                    if voice.isRecording { Label("Listening on this device…", systemImage: "waveform") }
+                    if generating { ProgressView("Making draft…") }
+                    else if draftFailed {
+                        Button("Try again", systemImage: "arrow.clockwise") { scheduleDraft(immediate: true) }
+                    }
+                } footer: {
+                    Text("Try “Shopping list: milk, eggs, bread.” A draft appears after you pause typing or finish speaking. Nothing is saved until you confirm.")
+                }
+                if let unavailableReason {
+                    Section { Label(unavailableReason, systemImage: "info.circle").foregroundStyle(.secondary) }
+                }
+            }
+
+            if kind != .quickAdd || hasPreview {
+            if kind == .quickAdd {
+                Section {
+                    Picker("Create as", selection: $draftKind) {
+                        Text("Task").tag(NewItemKind.task)
+                        Text("Project").tag(NewItemKind.project)
+                    }
+                    .pickerStyle(.segmented)
+                } header: { Text("Review before adding") }
+            }
             Section {
                 TextField("What needs doing?", text: $title, axis: .vertical)
                     .lineLimit(1...3)
@@ -67,7 +127,7 @@ struct NewItemView: View {
                 StartScheduleFields(hasStart: $hasStart, start: $start,
                                     hasStartTime: $hasStartTime, startTime: $startTime)
             } footer: {
-                Text(kind == .task
+                Text(effectiveKind == .task
                     ? "Tasks with a future start date or time stay out of Available until then."
                     : "A future start date or time keeps the project and its tasks out of Available until then.")
             }
@@ -79,7 +139,7 @@ struct NewItemView: View {
                 }
             }
 
-            if kind == .task {
+            if effectiveKind == .task {
                 Section {
                     Picker("Project", selection: $projectId) {
                         Text("No project · top-level task").tag(String?.none)
@@ -109,6 +169,7 @@ struct NewItemView: View {
                     }
                 }
             }
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -118,7 +179,7 @@ struct NewItemView: View {
                     Menu {
                         ForEach(NewItemKind.allCases) { option in
                             Button {
-                                kind = option
+                                changeKind(to: option)
                             } label: {
                                 if kind == option {
                                     Label(option.rawValue, systemImage: "checkmark")
@@ -135,7 +196,7 @@ struct NewItemView: View {
                         }
                         .foregroundStyle(.tint)
                     }
-                    .accessibilityLabel("Create as \(kind.rawValue). Choose task or project")
+                    .accessibilityLabel("New \(kind.rawValue). Choose task, project, or Quick Add")
                 }
                 .font(.headline)
             }
@@ -153,8 +214,151 @@ struct NewItemView: View {
         )) { Button("OK", role: .cancel) {} } message: { Text(errorText ?? "") }
         .task {
             try? await Task.sleep(for: .milliseconds(250))
-            titleFocused = true
+            if startWithVoice && kind == .quickAdd { beginVoice() }
+            else if kind == .quickAdd { promptFocused = true }
+            else { titleFocused = true }
         }
+        .onChange(of: prompt) { _, updatedPrompt in
+            let cameFromVoice = updatedPrompt == voicePromptPending
+            voicePromptPending = nil
+            guard !cameFromVoice, kind == .quickAdd,
+                  !voice.isRecording && !voice.isPreparing && !voice.isFinishing else { return }
+            scheduleDraft()
+        }
+        .onChange(of: voice.transcript) { _, transcript in
+            guard !transcript.isEmpty else { return }
+            let updated = promptBeforeDictation.isEmpty ? transcript : "\(promptBeforeDictation) \(transcript)"
+            voicePromptPending = updated
+            prompt = updated
+            if voice.isRecording {
+                silenceTask?.cancel()
+                silenceTask = Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2.5))
+                    guard !Task.isCancelled, voice.isRecording else { return }
+                    voice.stop()
+                }
+            }
+        }
+        .onChange(of: voice.completionCount) { _, _ in
+            silenceTask?.cancel()
+            let transcript = voice.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !transcript.isEmpty else { return }
+            let updated = promptBeforeDictation.isEmpty ? transcript : "\(promptBeforeDictation) \(transcript)"
+            voicePromptPending = updated
+            prompt = updated
+            if let unavailableReason { errorText = unavailableReason }
+            else { scheduleDraft(immediate: true) }
+        }
+        .onChange(of: voice.errorText) { _, message in if let message { errorText = message } }
+        .onDisappear {
+            silenceTask?.cancel()
+            draftTask?.cancel()
+            voice.cancel()
+        }
+    }
+
+    private var effectiveKind: NewItemKind { kind == .quickAdd ? draftKind : kind }
+    private var model: SystemLanguageModel { .default }
+
+    private var unavailableReason: String? {
+        switch model.availability {
+        case .available: nil
+        case .unavailable(.deviceNotEligible): "This device doesn't support Apple Intelligence. You can still add tasks and projects manually."
+        case .unavailable(.appleIntelligenceNotEnabled): "Turn on Apple Intelligence in Settings to use Quick Add."
+        case .unavailable(.modelNotReady): "The on-device model isn't ready yet. Try again after it finishes downloading."
+        case .unavailable: "Apple Intelligence is unavailable right now. You can add items manually."
+        }
+    }
+
+    private func changeKind(to option: NewItemKind) {
+        guard kind != option else { return }
+        if kind == .quickAdd {
+            draftTask?.cancel()
+            silenceTask?.cancel()
+            voice.cancel()
+        }
+        kind = option
+        if option == .quickAdd { promptFocused = true }
+        else { titleFocused = true }
+    }
+
+    private func beginVoice() {
+        draftTask?.cancel()
+        draftRequestID = UUID()
+        generating = false
+        hasPreview = false
+        draftFailed = false
+        promptBeforeDictation = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task { await voice.start() }
+    }
+
+    private func scheduleDraft(immediate: Bool = false) {
+        draftTask?.cancel()
+        let requestID = UUID()
+        draftRequestID = requestID
+        generating = false
+        hasPreview = false
+        draftFailed = false
+        let requestText = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !requestText.isEmpty, !saving, unavailableReason == nil,
+              !voice.isRecording, !voice.isPreparing, !voice.isFinishing else { return }
+        draftTask = Task { @MainActor in
+            if !immediate { try? await Task.sleep(for: .milliseconds(900)) }
+            guard !Task.isCancelled, draftRequestID == requestID else { return }
+            await generate(requestText, requestID: requestID)
+        }
+    }
+
+    private func generate(_ requestText: String, requestID: UUID) async {
+        generating = true
+        defer { if draftRequestID == requestID { generating = false } }
+        do {
+            let session = LanguageModelSession(model: model)
+            let today = TodoDates.string(from: Date())
+            let response = try await session.respond(
+                to: "Today is \(today), for resolving relative dates only. Convert this request to one task or one project with subtasks. A shopping list is a project; every named item becomes a subtask. Do not invent items, dates, or times. The start date is absent by default, even if a due date is given; never fill it with today unless the user explicitly asks to start today. Only include a start time if the request explicitly says when work can begin on its start date. If no due date is specified, leave it empty. Request: \(requestText)",
+                generating: GeneratedQuickAdd.self
+            )
+            guard !Task.isCancelled, draftRequestID == requestID else { return }
+            let result = response.content
+            let newTitle = result.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !newTitle.isEmpty else { throw TodoError.server("The model didn't suggest a title. Try a more specific request.") }
+            switch result.kind {
+            case .task: draftKind = .task
+            case .project: draftKind = .project
+            }
+            title = newTitle
+            notes = result.notes
+            let generatedStart = result.hasExplicitStartDate ? Self.validDate(result.startDate) : nil
+            hasStart = generatedStart != nil
+            if let generatedStart { start = generatedStart }
+            let generatedTime = generatedStart != nil ? Self.validTime(result.startTime) : nil
+            hasStartTime = generatedTime != nil
+            if let generatedTime { startTime = generatedTime }
+            hasDue = Self.validDate(result.dueDate) != nil
+            if let date = Self.validDate(result.dueDate) { due = date }
+            subtasks = Array(result.subtasks.prefix(50))
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .map(NewSubtask.init(title:))
+            hasPreview = true
+        } catch {
+            guard !Task.isCancelled, draftRequestID == requestID else { return }
+            draftFailed = true
+            errorText = error.localizedDescription
+        }
+    }
+
+    private static func validDate(_ raw: String) -> Date? {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value.count == 10, TodoDates.string(from: TodoDates.date(from: value)) == value else { return nil }
+        return TodoDates.date(from: value)
+    }
+
+    private static func validTime(_ raw: String) -> Date? {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value.range(of: #"^([01]\d|2[0-3]):[0-5]\d$"#, options: .regularExpression) != nil else { return nil }
+        return TodoDates.timeDate(from: value)
     }
 
     private func save() {
@@ -163,7 +367,7 @@ struct NewItemView: View {
         Task {
             defer { saving = false }
             do {
-                switch kind {
+                switch effectiveKind {
                 case .task:
                     var draft = TaskDraft()
                     draft.title = cleanedTitle
@@ -191,6 +395,8 @@ struct NewItemView: View {
                     } else {
                         try await store.createProject(draft, subtasks: cleanedSubtasks)
                     }
+                case .quickAdd:
+                    break
                 }
                 dismiss()
             } catch {

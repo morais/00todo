@@ -244,11 +244,8 @@ struct TasksView: View {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { showSettings = true } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel("Settings")
-                    Button { pendingQuickAdd = .text } label: { Image(systemName: "sparkles") }
-                        .accessibilityLabel("Quick Add")
-                        .disabled(!store.isConfigured)
                     Button { showNewItem = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("Add task or project")
+                        .accessibilityLabel("Add task, project, or Quick Add")
                         .disabled(!store.isConfigured)
                 }
             }
@@ -257,7 +254,7 @@ struct TasksView: View {
             .onChange(of: scenePhase) { _, phase in if phase == .active { now = Date() } }
             .sheet(isPresented: $showNewItem) { NavigationStack { NewItemView() } }
             .sheet(item: $pendingQuickAdd) { launch in
-                NavigationStack { QuickAddView(startWithVoice: launch == .voice) }
+                NavigationStack { NewItemView(initialKind: .quickAdd, startWithVoice: launch == .voice) }
             }
             .sheet(isPresented: $showSettings) { SettingsView() }
             .overlay(alignment: .bottom) {
@@ -273,6 +270,18 @@ struct TaskRow: View {
     let task: TodoTask
     let project: TodoProject?
     let onToggle: () -> Void
+
+    private var effectiveStart: (date: String, time: String?)? {
+        let own = task.startDate.map { (date: $0, time: task.startTime) }
+        let parent = project?.startDate.map { (date: $0, time: project?.startTime) }
+        switch (own, parent) {
+        case (nil, nil): return nil
+        case (let own?, nil): return own
+        case (nil, let parent?): return parent
+        case (let own?, let parent?):
+            return "\(own.date)T\(own.time ?? "00:00")" >= "\(parent.date)T\(parent.time ?? "00:00")" ? own : parent
+        }
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -292,9 +301,9 @@ struct TaskRow: View {
                         Label(project.name, systemImage: "folder")
                             .lineLimit(1)
                     }
-                    if let startDate = task.startDate,
-                       !TodoDates.hasStarted(startDate: startDate, startTime: task.startTime, at: Date()) {
-                        Text(TodoDates.startLabel(date: startDate, time: task.startTime))
+                    if let start = effectiveStart,
+                       !TodoDates.hasStarted(startDate: start.date, startTime: start.time, at: Date()) {
+                        Text(TodoDates.startLabel(date: start.date, time: start.time))
                     }
                     if let dueDate = task.dueDate {
                         Text("Due \(dueDate)")

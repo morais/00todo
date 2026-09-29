@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import Security
+import WidgetKit
 
 enum TodoError: LocalizedError {
     case invalidServer
@@ -51,6 +52,9 @@ private struct AppleLoginResponse: Decodable {
            let snapshot = try? JSONDecoder().decode(TodoSnapshot.self, from: cached) {
             projects = snapshot.projects
             tasks = snapshot.tasks
+        } else if token.isEmpty || tenantId == nil {
+            WidgetSnapshotStore.clear()
+            WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
         }
     }
 
@@ -88,6 +92,8 @@ private struct AppleLoginResponse: Decodable {
             projects = []
             tasks = []
             try? FileManager.default.removeItem(at: Self.cacheURL)
+            WidgetSnapshotStore.clear()
+            WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
         }
         token = login.token
         accountEmail = login.tenant.email
@@ -122,6 +128,8 @@ private struct AppleLoginResponse: Decodable {
         UserDefaults.standard.removeObject(forKey: "accountEmail")
         UserDefaults.standard.removeObject(forKey: "tenantId")
         try? FileManager.default.removeItem(at: Self.cacheURL)
+        WidgetSnapshotStore.clear()
+        WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
     }
 
     func refresh() async {
@@ -135,6 +143,18 @@ private struct AppleLoginResponse: Decodable {
             if let data = try? JSONEncoder().encode(snapshot) {
                 try? FileManager.default.createDirectory(at: Self.cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try? data.write(to: Self.cacheURL, options: .atomic)
+            }
+            let widgetSnapshot = WidgetSnapshot(
+                projects: projects.map { WidgetProject(id: $0.id, name: $0.name, startDate: $0.startDate,
+                                                      startTime: $0.startTime, dueDate: $0.dueDate,
+                                                      completedAt: $0.completedAt, sortOrder: $0.sortOrder, createdAt: $0.createdAt) },
+                tasks: tasks.map { WidgetTask(id: $0.id, title: $0.title, projectId: $0.projectId,
+                                              startDate: $0.startDate, startTime: $0.startTime,
+                                              dueDate: $0.dueDate, completedAt: $0.completedAt,
+                                              sortOrder: $0.sortOrder, createdAt: $0.createdAt) }
+            )
+            if WidgetSnapshotStore.save(widgetSnapshot) {
+                WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
             }
             message = nil
         } catch {

@@ -83,6 +83,16 @@ enum TodoDates {
     }
 
     static func startLabel(date: String, time: String?) -> String {
-        "Starts \(date)\(time.map { " at \($0)" } ?? "")"
+        let startDay = Calendar.current.startOfDay(for: TodoDates.date(from: date))
+        let today = Calendar.current.startOfDay(for: Date())
+        let days = Calendar.current.dateComponents([.day], from: today, to: startDay).day ?? 0
+        let relative: String
+        switch days {
+        case 0: relative = "today"
+        case 1: relative = "tomorrow"
+        case 2...: relative = "in \(days) days"
+        default: relative = date
+        }
+        return "Starts \(relative)\(time.map { " at \($0)" } ?? "")"
     }
 }

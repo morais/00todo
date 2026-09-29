@@ -29,6 +29,7 @@ targets:
         UILaunchScreen: {}
         ITSAppUsesNonExemptEncryption: false
         TodoServerBaseURL: https://api.example.com
+        TodoAppGroup: group.com.example.zerozerotodo
         NSMicrophoneUsageDescription: "00Todo uses the microphone to dictate a task or shopping list on your device."
         NSSpeechRecognitionUsageDescription: "00Todo transcribes your spoken task or shopping list on your device."
         CFBundleURLTypes:
@@ -55,6 +56,8 @@ targets:
       properties:
         com.apple.developer.applesignin:
           - Default
+        com.apple.security.application-groups:
+          - group.com.example.zerozerotodo
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.zerozerotodo
@@ -69,14 +72,21 @@ targets:
     platform: iOS
     sources:
       - path: Sources/Widgets
+      - path: Sources/WidgetSnapshot.swift
     info:
       path: Resources/Widgets/Info.plist
       properties:
         CFBundleDisplayName: 00Todo
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        TodoAppGroup: group.com.example.zerozerotodo
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Resources/Widgets/ZeroZeroTodoWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.example.zerozerotodo
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.zerozerotodo.widgets
