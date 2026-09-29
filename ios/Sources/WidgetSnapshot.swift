@@ -15,8 +15,8 @@ struct WidgetSnapshot: Codable {
             return parent.completedAt == nil && Self.hasStarted(parent.startDate, parent.startTime, at: now)
         }
         let shownTasks = expandProjects ? availableTasks : availableTasks.filter { $0.projectId == nil }
-        let expandedProjectIDs = Set(shownTasks.compactMap(\.projectId))
-        let shownProjects = availableProjects.filter { !expandProjects || !expandedProjectIDs.contains($0.id) }
+        let projectsWithUncompletedTasks = Set(tasks.filter { $0.completedAt == nil }.compactMap(\.projectId))
+        let shownProjects = availableProjects.filter { !expandProjects || !projectsWithUncompletedTasks.contains($0.id) }
         return (shownProjects.map { WidgetItem(id: "project-\($0.id)", title: $0.name, projectName: nil,
                                                isProject: true, dueDate: $0.dueDate, sortOrder: $0.sortOrder, createdAt: $0.createdAt) }
                 + shownTasks.map { WidgetItem(id: "task-\($0.id)", title: $0.title,

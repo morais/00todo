@@ -147,9 +147,9 @@ struct TasksView: View {
             case .completed: return item.completedAt != nil
             }
         }
-        let visibleProjectIDs = Set(tasks.compactMap(\.projectId))
+        let projectsWithUncompletedTasks = Set(store.tasks.filter { $0.completedAt == nil }.compactMap(\.projectId))
         let projectItems = projects
-            .filter { !showProjectTasks || !visibleProjectIDs.contains($0.id) }
+            .filter { !showProjectTasks || !projectsWithUncompletedTasks.contains($0.id) }
             .map(ListItem.project)
         let taskItems = tasks.map(ListItem.task)
         return (projectItems + taskItems).sorted { first, second in

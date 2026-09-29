@@ -7,6 +7,12 @@ import Foundation
                                     dueDate: nil, completedAt: nil, sortOrder: 1, createdAt: "1")
         let futureProject = WidgetProject(id: "future", name: "Later", startDate: "2026-10-01", startTime: nil,
                                           dueDate: nil, completedAt: nil, sortOrder: 2, createdAt: "2")
+        let upcomingChildProject = WidgetProject(id: "upcoming-child", name: "Upcoming list", startDate: nil,
+                                                 startTime: nil, dueDate: nil, completedAt: nil, sortOrder: 3, createdAt: "3")
+        let finishedChildrenProject = WidgetProject(id: "finished-children", name: "Finished list", startDate: nil,
+                                                    startTime: nil, dueDate: nil, completedAt: nil, sortOrder: 4, createdAt: "4")
+        let emptyProject = WidgetProject(id: "empty", name: "Empty list", startDate: nil,
+                                         startTime: nil, dueDate: nil, completedAt: nil, sortOrder: 5, createdAt: "5")
         let tasks = [
             WidgetTask(id: "milk", title: "Milk", projectId: "p", startDate: nil, startTime: nil,
                        dueDate: nil, completedAt: nil, sortOrder: 0, createdAt: "1"),
@@ -16,17 +22,30 @@ import Foundation
                        dueDate: nil, completedAt: nil, sortOrder: 0, createdAt: "3"),
             WidgetTask(id: "top", title: "Top level", projectId: nil, startDate: nil, startTime: nil,
                        dueDate: nil, completedAt: nil, sortOrder: 0, createdAt: "4"),
+            WidgetTask(id: "upcoming", title: "Next week", projectId: "upcoming-child",
+                       startDate: "2026-10-06", startTime: nil,
+                       dueDate: nil, completedAt: nil, sortOrder: 0, createdAt: "5"),
+            WidgetTask(id: "finished", title: "Bought", projectId: "finished-children",
+                       startDate: nil, startTime: nil, dueDate: nil,
+                       completedAt: "2026-09-28T12:00:00Z", sortOrder: 0, createdAt: "6"),
             WidgetTask(id: "done", title: "Done", projectId: nil, startDate: nil, startTime: nil,
                        dueDate: nil, completedAt: "2026-09-28T12:00:00Z", sortOrder: 0, createdAt: "5")
         ]
-        let snapshot = WidgetSnapshot(projects: [project, futureProject], tasks: tasks)
+        let snapshot = WidgetSnapshot(projects: [project, futureProject, upcomingChildProject,
+                                                 finishedChildrenProject, emptyProject], tasks: tasks)
         let collapsed = snapshot.availableItems(at: now, expandProjects: false)
-        precondition(Set(collapsed.map(\.title)) == ["Shopping", "Top level"])
+        precondition(Set(collapsed.map(\.title)) == ["Shopping", "Upcoming list", "Finished list", "Empty list", "Top level"])
         let expanded = snapshot.availableItems(at: now, expandProjects: true)
-        precondition(Set(expanded.map(\.title)) == ["Milk", "Top level"])
+        precondition(Set(expanded.map(\.title)) == ["Milk", "Finished list", "Empty list", "Top level"])
         precondition(expanded.first { $0.title == "Milk" }?.projectName == "Shopping")
         let afterTime = now.addingTimeInterval(2 * 60 * 60)
-        precondition(Set(snapshot.availableItems(at: afterTime, expandProjects: true).map(\.title)) == ["Milk", "Timed", "Top level"])
+        precondition(Set(snapshot.availableItems(at: afterTime, expandProjects: true).map(\.title)) ==
+                     ["Milk", "Timed", "Finished list", "Empty list", "Top level"])
+        var completedUpcoming = snapshot
+        completedUpcoming.tasks[completedUpcoming.tasks.firstIndex { $0.id == "upcoming" }!].completedAt =
+            "2026-09-29T12:00:00Z"
+        precondition(completedUpcoming.availableItems(at: now, expandProjects: true)
+            .contains { $0.title == "Upcoming list" })
         precondition(snapshot.upcomingStartDates(after: now).contains(afterTime))
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date())!
         let twoDays = Calendar.current.date(byAdding: .day, value: 2, to: Date())!
