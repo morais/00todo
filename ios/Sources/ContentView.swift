@@ -72,6 +72,14 @@ private enum TaskFilter: String, CaseIterable, Identifiable {
     case upcoming = "Upcoming"
     case completed = "Completed"
     var id: Self { self }
+
+    var symbol: String {
+        switch self {
+        case .available: "checklist"
+        case .upcoming: "calendar"
+        case .completed: "checkmark.circle"
+        }
+    }
 }
 
 private enum ListItem: Identifiable {
@@ -135,7 +143,7 @@ struct TasksView: View {
         }
     }
 
-    private var visibleItems: [ListItem] {
+    private func visibleItems(for filter: TaskFilter) -> [ListItem] {
         let parents = Dictionary(uniqueKeysWithValues: store.projects.map { ($0.id, $0) })
         let projects = store.projects.filter { item in
             switch filter {
@@ -180,10 +188,10 @@ struct TasksView: View {
         }
     }
 
-    private var upcomingSections: [(title: String, items: [ListItem])] {
+    private func upcomingSections(for items: [ListItem]) -> [(title: String, items: [ListItem])] {
         let parents = Dictionary(uniqueKeysWithValues: store.projects.map { ($0.id, $0) })
         var groups = [[ListItem]](repeating: [], count: UpcomingGroup.allCases.count)
-        for item in visibleItems {
+        for item in items {
             let start = String((effectiveStartKey(for: item, parents: parents) ?? "9999-12-31").prefix(10))
             groups[TodoDates.upcomingGroup(for: start, at: now).rawValue].append(item)
         }
@@ -212,31 +220,34 @@ struct TasksView: View {
         }
     }
 
+    private func list(for filter: TaskFilter) -> some View {
+        let items = visibleItems(for: filter)
+        return List {
+            if items.isEmpty {
+                ContentUnavailableView(filter == .available ? "All clear" : "No items", systemImage: "checkmark.circle")
+            } else if filter == .upcoming {
+                ForEach(upcomingSections(for: items), id: \.title) { section in
+                    Section(section.title) {
+                        ForEach(section.items) { item in itemRow(item) }
+                    }
+                }
+            } else {
+                ForEach(items) { item in itemRow(item) }
+            }
+        }
+            .contentMargins(.top, verticalSizeClass == .compact ? 0 : nil, for: .scrollContent)
+            .refreshable { await store.refresh() }
+    }
+
     var body: some View {
         NavigationStack {
-            List {
-                Picker("View", selection: $filter) {
-                    ForEach(TaskFilter.allCases) { choice in Text(choice.rawValue).tag(choice) }
-                }
-                .pickerStyle(.segmented)
-                .listRowBackground(Color.clear)
-                Toggle("Expand projects", isOn: $showProjectTasks)
-
-                if visibleItems.isEmpty {
-                    ContentUnavailableView(filter == .available ? "All clear" : "No items", systemImage: "checkmark.circle")
-                } else if filter == .upcoming {
-                    ForEach(upcomingSections, id: \.title) { section in
-                        Section(section.title) {
-                            ForEach(section.items) { item in itemRow(item) }
-                        }
-                    }
-                } else {
-                    ForEach(visibleItems) { item in
-                        itemRow(item)
-                    }
+            TabView(selection: $filter) {
+                ForEach(TaskFilter.allCases) { choice in
+                    list(for: choice)
+                        .tabItem { Label(choice.rawValue, systemImage: choice.symbol) }
+                        .tag(choice)
                 }
             }
-            .contentMargins(.top, verticalSizeClass == .compact ? 0 : nil, for: .scrollContent)
             .navigationTitle("00Todo")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -247,12 +258,18 @@ struct TasksView: View {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { showSettings = true } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel("Settings")
+                    Button { showProjectTasks.toggle() } label: {
+                        Image(systemName: "list.bullet.indent")
+                    }
+                    .tint(showProjectTasks ? .accentColor : .secondary)
+                    .accessibilityLabel("Expand projects")
+                    .accessibilityValue(showProjectTasks ? "On" : "Off")
+                    .help(showProjectTasks ? "Show projects as folders" : "Show tasks within projects")
                     Button { showNewItem = true } label: { Image(systemName: "plus") }
                         .accessibilityLabel("Add task, project, or Quick Add")
                         .disabled(!store.isConfigured)
                 }
             }
-            .refreshable { await store.refresh() }
             .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) {
                 now = $0
                 Task { await store.updateCurrentBadge(at: now) }

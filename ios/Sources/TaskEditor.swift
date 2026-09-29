@@ -91,7 +91,18 @@ struct TaskEditor: View {
 
             if let task {
                 Section {
-                    Button("Delete task", role: .destructive) { confirmDelete = true }
+                    Button {
+                        Task { await store.toggle(store.tasks.first(where: { $0.id == task.id }) ?? task) }
+                    } label: {
+                        let current = store.tasks.first(where: { $0.id == task.id }) ?? task
+                        Label(current.completedAt == nil ? "Complete task" : "Reopen task",
+                              systemImage: current.completedAt == nil ? "checkmark.circle" : "arrow.uturn.backward.circle")
+                    }
+                    .disabled(saving)
+                    Button(role: .destructive) { confirmDelete = true } label: {
+                        Label("Delete task", systemImage: "trash")
+                    }
+                    .disabled(saving)
                 }
                 .confirmationDialog("Delete this task?", isPresented: $confirmDelete) {
                     Button("Delete", role: .destructive) {
