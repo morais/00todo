@@ -32,11 +32,12 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var shortcuts = QuickAddShortcuts.shared
     @State private var pendingQuickAdd: QuickAddLaunch?
+    @State private var pendingWidgetDestination: WidgetDestination?
 
     var body: some View {
         Group {
             if store.isConfigured {
-                TasksView(pendingQuickAdd: $pendingQuickAdd)
+                TasksView(pendingQuickAdd: $pendingQuickAdd, pendingWidgetDestination: $pendingWidgetDestination)
             } else {
                 SignInView()
             }
@@ -46,7 +47,14 @@ struct ContentView: View {
             if phase == .active { Task { await store.refresh() } }
         }
         .onOpenURL { url in
-            if let launch = QuickAddLaunch(url: url) { pendingQuickAdd = launch }
+            if let launch = QuickAddLaunch(url: url) {
+                pendingWidgetDestination = nil
+                pendingQuickAdd = launch
+            } else if let destination = WidgetDestination(url: url) {
+                pendingQuickAdd = nil
+                pendingWidgetDestination = destination
+                Task { await store.refresh() }
+            }
         }
         .onAppear { openPendingShortcut() }
         .onChange(of: shortcuts.pendingLaunch) { _, _ in openPendingShortcut() }
@@ -107,6 +115,7 @@ struct TasksView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     @Binding var pendingQuickAdd: QuickAddLaunch?
+    @Binding var pendingWidgetDestination: WidgetDestination?
     @State private var filter: TaskFilter = .available
     @AppStorage("showProjectTasksInLists") private var showProjectTasks = true
     @State private var showNewItem = false
@@ -250,6 +259,28 @@ struct TasksView: View {
             }
             .onChange(of: scenePhase) { _, phase in if phase == .active { now = Date() } }
             .onChange(of: showProjectTasks) { _, _ in Task { await store.syncBadge() } }
+            .onChange(of: pendingWidgetDestination) { _, destination in
+                if destination != nil {
+                    showNewItem = false
+                    showSettings = false
+                }
+            }
+            .navigationDestination(item: $pendingWidgetDestination) { destination in
+                switch destination {
+                case .task(let id):
+                    if let task = store.tasks.first(where: { $0.id == id }) {
+                        TaskEditor(task: task)
+                    } else {
+                        ContentUnavailableView("Task unavailable", systemImage: "checklist")
+                    }
+                case .project(let id):
+                    if let project = store.projects.first(where: { $0.id == id }) {
+                        ProjectTasksView(project: project)
+                    } else {
+                        ContentUnavailableView("Project unavailable", systemImage: "folder")
+                    }
+                }
+            }
             .sheet(isPresented: $showNewItem) { NavigationStack { NewItemView() } }
             .sheet(item: $pendingQuickAdd) { launch in
                 NavigationStack { NewItemView(initialKind: .quickAdd, startWithVoice: launch == .voice) }

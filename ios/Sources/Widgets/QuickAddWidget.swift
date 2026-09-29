@@ -44,6 +44,7 @@ private struct AvailableWidgetView: View {
 
     private let voiceURL = URL(string: "zerozerotodo://quick-add/voice")!
     private let textURL = URL(string: "zerozerotodo://quick-add/text")!
+    private let homeURL = URL(string: "zerozerotodo://open/home")!
 
     private var rowLimit: Int {
         switch family {
@@ -84,19 +85,26 @@ private struct AvailableWidgetView: View {
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(entry.items.prefix(rowLimit)) { item in
-                        HStack(alignment: .firstTextBaseline, spacing: 7) {
-                            Image(systemName: item.isProject ? "folder" : "circle")
-                                .font(.caption)
-                                .foregroundStyle(Color(red: 0.42, green: 0.76, blue: 1))
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(item.title)
-                                    .lineLimit(1)
-                                    .font(.subheadline)
-                                if family != .systemMedium, let projectName = item.projectName {
-                                    Text(projectName).font(.caption2).foregroundStyle(.white.opacity(0.65)).lineLimit(1)
+                        if let destination = WidgetDestination(item: item) {
+                            Link(destination: destination.url) {
+                                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                                    Image(systemName: item.isProject ? "folder" : "circle")
+                                        .font(.caption)
+                                        .foregroundStyle(Color(red: 0.42, green: 0.76, blue: 1))
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(item.title)
+                                            .lineLimit(1)
+                                            .font(.subheadline)
+                                        if family != .systemMedium, let projectName = item.projectName {
+                                            Text(projectName).font(.caption2).foregroundStyle(.white.opacity(0.65)).lineLimit(1)
+                                        }
+                                    }
+                                    Spacer(minLength: 0)
                                 }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                             }
-                            Spacer(minLength: 0)
+                            .accessibilityLabel("Open \(item.isProject ? "project" : "task") \(item.title)")
                         }
                     }
                     if entry.items.count > rowLimit {
@@ -128,7 +136,7 @@ private struct AvailableWidgetView: View {
         }
         .padding(family == .systemSmall ? 12 : 14)
         .containerBackground(Color(red: 0.07, green: 0.17, blue: 0.31), for: .widget)
-        .widgetURL(textURL)
+        .widgetURL(family == .systemSmall ? textURL : homeURL)
     }
 }
 

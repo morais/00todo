@@ -87,6 +87,53 @@ struct WidgetItem: Identifiable {
     var createdAt: String
 }
 
+enum WidgetDestination: Hashable, Identifiable {
+    case task(String)
+    case project(String)
+
+    var id: String {
+        switch self {
+        case .task(let id): "task-\(id)"
+        case .project(let id): "project-\(id)"
+        }
+    }
+
+    init?(item: WidgetItem) {
+        let prefix = item.isProject ? "project-" : "task-"
+        guard item.id.hasPrefix(prefix), item.id.count > prefix.count else { return nil }
+        let recordID = String(item.id.dropFirst(prefix.count))
+        self = item.isProject ? .project(recordID) : .task(recordID)
+    }
+
+    init?(url: URL) {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.scheme == "zerozerotodo", components.host == "open",
+              components.user == nil, components.password == nil, components.port == nil,
+              components.fragment == nil, let query = components.queryItems, query.count == 1,
+              query[0].name == "id", let recordID = query[0].value, !recordID.isEmpty else { return nil }
+        switch components.path {
+        case "/task": self = .task(recordID)
+        case "/project": self = .project(recordID)
+        default: return nil
+        }
+    }
+
+    var url: URL {
+        var components = URLComponents()
+        components.scheme = "zerozerotodo"
+        components.host = "open"
+        switch self {
+        case .task(let id):
+            components.path = "/task"
+            components.queryItems = [URLQueryItem(name: "id", value: id)]
+        case .project(let id):
+            components.path = "/project"
+            components.queryItems = [URLQueryItem(name: "id", value: id)]
+        }
+        return components.url!
+    }
+}
+
 enum WidgetSnapshotStore {
     static let widgetKind = "AvailableTodoWidget"
 

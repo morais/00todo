@@ -38,6 +38,14 @@ import Foundation
         let expanded = snapshot.availableItems(at: now, expandProjects: true)
         precondition(Set(expanded.map(\.title)) == ["Milk", "Finished list", "Empty list", "Top level"])
         precondition(expanded.first { $0.title == "Milk" }?.projectName == "Shopping")
+        let taskDestination = WidgetDestination(item: expanded.first { $0.title == "Milk" }!)!
+        precondition(taskDestination == .task("milk"))
+        precondition(WidgetDestination(url: taskDestination.url) == taskDestination)
+        let projectDestination = WidgetDestination(item: collapsed.first { $0.title == "Shopping" }!)!
+        precondition(projectDestination == .project("p"))
+        precondition(WidgetDestination(url: projectDestination.url) == projectDestination)
+        precondition(WidgetDestination(url: URL(string: "zerozerotodo://quick-add/text")!) == nil)
+        precondition(WidgetDestination(url: URL(string: "zerozerotodo://open/task?id=milk&extra=1")!) == nil)
         let afterTime = now.addingTimeInterval(2 * 60 * 60)
         precondition(Set(snapshot.availableItems(at: afterTime, expandProjects: true).map(\.title)) ==
                      ["Milk", "Timed", "Finished list", "Empty list", "Top level"])
