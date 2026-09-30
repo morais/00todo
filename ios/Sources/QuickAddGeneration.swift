@@ -8,7 +8,7 @@ enum GeneratedItemKind {
 
 @Generable
 struct GeneratedQuickAdd {
-    @Guide(description: "Use project for a list or an item with subtasks; otherwise task")
+    @Guide(description: "Default to task for one action. Use project only for an explicitly requested project or list, or for two or more distinct related subtasks.")
     var kind: GeneratedItemKind
     @Guide(description: "Short name for the task or project")
     var title: String
@@ -22,6 +22,6 @@ struct GeneratedQuickAdd {
     var startTime: String
     @Guide(description: "Due date as YYYY-MM-DD if specified, otherwise empty")
     var dueDate: String
-    @Guide(description: "For a project, each explicitly listed item as a short subtask; for a task, empty", .maximumCount(50))
+    @Guide(description: "For a project, distinct subtasks explicitly named by the user; never repeat the project title. For a task, empty.", .maximumCount(50))
     var subtasks: [String]
 }

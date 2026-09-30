@@ -20,6 +20,8 @@ Quick Add, selected from the Add sheet's title menu, uses Apple's on-device Foun
 
 The 00Todo Available Home Screen widget supports Small, Medium, Large, and iPad Extra Large. Small shows the available-item count; larger sizes show actual titles, including a project subtitle for expanded tasks. Task rows in the larger widgets open the selected task; project rows open the project. Each widget has its own “Expand projects” setting in Edit Widget, defaulting on. Speak and Quick Add icons open the unified Add sheet; widgets cannot host a text field or record audio themselves. The widget is a separate extension bundle, `com.00todo.app.widgets` in the production project or `com.example.zerozerotodo.widgets` in the sample. The app shares a minimal snapshot through their App Group: titles, project names, dates, and completion status, but no notes, account token, or credentials. The shared snapshot is cleared on sign-out and account switch. WidgetKit timelines include future start times so available items can appear without reopening the app. With badge-only notification permission, the app icon badge shows the current Available row count using the main list's Expand projects setting; badge-only local notifications update that count when locally known start dates arrive while the app is closed. Remote changes appear after the next app refresh.
 
+Quick Add treats a single action as a task. Explicit projects and lists, or requests with multiple distinct subtasks, become projects. A model-generated project with only one subtask collapses to a task, using the subtask's title when distinct, unless the user explicitly asked for a project.
+
 For a simulator compile without signing:
 
 ```sh

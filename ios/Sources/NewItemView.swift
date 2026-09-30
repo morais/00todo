@@ -315,7 +315,7 @@ struct NewItemView: View {
         do {
             let session = LanguageModelSession(
                 model: model,
-                instructions: "Convert the user's request to one task or one project with subtasks. A shopping list is a project; every named item becomes a subtask. Do not invent items, dates, or times. The start date is absent by default, even if a due date is given; never fill it with today unless the user explicitly asks to start today. Only include a start time if the request explicitly says when work can begin on its start date. If no due date is specified, leave it empty. Notes may contain only extra details supplied by the user, never these instructions."
+                instructions: "Convert the user's request to a task by default. Use a project only when the user explicitly asks for a project or list, or names two or more distinct related subtasks. A single action is a task, not a project with one copy of that action as its subtask. For a shopping list, include only the items the user named. Do not invent items, dates, or times. The start date is absent by default, even if a due date is given; never fill it with today unless the user explicitly asks to start today. Only include a start time if the request explicitly says when work can begin on its start date. If no due date is specified, leave it empty. Notes may contain only extra details supplied by the user, never these instructions."
             )
             let today = TodoDates.string(from: Date())
             let response = try await session.respond(
@@ -326,11 +326,18 @@ struct NewItemView: View {
             let result = response.content
             let newTitle = result.title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !newTitle.isEmpty else { throw TodoError.server("The model didn't suggest a title. Try a more specific request.") }
-            switch result.kind {
-            case .task: draftKind = .task
-            case .project: draftKind = .project
+            let modelSuggestedProject = switch result.kind {
+            case .task: false
+            case .project: true
             }
-            title = newTitle
+            let shape = QuickAddDraftShape.resolve(
+                request: requestText,
+                modelSuggestedProject: modelSuggestedProject,
+                title: newTitle,
+                subtasks: Array(result.subtasks.prefix(50))
+            )
+            draftKind = shape.isProject ? .project : .task
+            title = shape.title
             notes = QuickAddNotes.cleaned(result.notes)
             let generatedStart = result.hasExplicitStartDate ? Self.validDate(result.startDate) : nil
             hasStart = generatedStart != nil
@@ -340,10 +347,7 @@ struct NewItemView: View {
             if let generatedTime { startTime = generatedTime }
             hasDue = Self.validDate(result.dueDate) != nil
             if let date = Self.validDate(result.dueDate) { due = date }
-            subtasks = Array(result.subtasks.prefix(50))
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-                .map(NewSubtask.init(title:))
+            subtasks = shape.subtasks.map(NewSubtask.init(title:))
             hasPreview = true
         } catch {
             guard !Task.isCancelled, draftRequestID == requestID else { return }
