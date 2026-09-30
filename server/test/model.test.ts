@@ -86,6 +86,16 @@ describe("task visibility", () => {
     expect(ProjectWithTasksInput.safeParse({ project: { name: "Shopping" }, tasks: Array(51).fill({ title: "Milk" }) }).success).toBe(false);
   });
 
+  it("accepts client-generated IDs for retryable offline creates", () => {
+    const projectId = "ad65215a-1eb4-4a5e-89bd-c9704afedeb1";
+    const taskId = "cdd4081e-1592-4753-90bd-657144253251";
+    expect(ProjectInput.parse({ id: projectId, name: "Shopping" }).id).toBe(projectId);
+    expect(TaskInput.parse({ id: taskId, title: "Milk" }).id).toBe(taskId);
+    expect(ProjectWithTasksInput.parse({ project: { id: projectId, name: "Shopping" },
+      tasks: [{ id: taskId, title: "Milk" }] }).tasks[0].id).toBe(taskId);
+    expect(TaskInput.safeParse({ id: "not-a-uuid", title: "Milk" }).success).toBe(false);
+  });
+
   it("does not fill omitted fields in a partial update", () => {
     expect(TaskPatch.parse({ completed: true })).toEqual({ completed: true });
   });

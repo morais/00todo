@@ -115,12 +115,14 @@ struct NewItemView: View {
                 } header: { Text("Review before adding") }
             }
             Section {
-                TextField("What needs doing?", text: $title, axis: .vertical)
-                    .lineLimit(1...3)
+                TextField("What needs doing?", text: $title)
+                    .submitLabel(.done)
+                    .onSubmit { if canSave { save() } }
                     .focused($titleFocused)
                 TextEditor(text: $notes)
                     .frame(minHeight: 90)
                     .accessibilityLabel("Notes")
+                NotesLinkButtons(notes: notes)
             }
 
             Section {
@@ -224,6 +226,10 @@ struct NewItemView: View {
             guard !cameFromVoice, kind == .quickAdd,
                   !voice.isRecording && !voice.isPreparing && !voice.isFinishing else { return }
             scheduleDraft()
+        }
+        .onChange(of: title) { _, value in
+            let singleLine = value.replacingOccurrences(of: #"[\r\n]+"#, with: " ", options: .regularExpression)
+            if singleLine != value { title = singleLine }
         }
         .onChange(of: voice.transcript) { _, transcript in
             guard !transcript.isEmpty else { return }

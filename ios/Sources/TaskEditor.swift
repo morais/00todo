@@ -52,11 +52,13 @@ struct TaskEditor: View {
     var body: some View {
         Form {
             Section("Task") {
-                TextField("What needs doing?", text: $draft.title, axis: .vertical)
-                    .lineLimit(1...3)
+                TextField("What needs doing?", text: $draft.title)
+                    .submitLabel(.done)
+                    .onSubmit { save() }
                 TextEditor(text: $draft.notes)
                     .frame(minHeight: 90)
                     .accessibilityLabel("Notes")
+                NotesLinkButtons(notes: draft.notes)
             }
 
             Section {
@@ -122,16 +124,23 @@ struct TaskEditor: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save() }
-                    .disabled(saving || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(saving || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || draft.title.count > 240 || draft.notes.count > 20_000)
             }
         }
         .alert("Couldn't save", isPresented: Binding(
             get: { errorText != nil },
             set: { if !$0 { errorText = nil } }
         )) { Button("OK", role: .cancel) {} } message: { Text(errorText ?? "") }
+        .onChange(of: draft.title) { _, value in
+            let singleLine = value.replacingOccurrences(of: #"[\r\n]+"#, with: " ", options: .regularExpression)
+            if singleLine != value { draft.title = singleLine }
+        }
     }
 
     private func save() {
+        guard !saving, !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              draft.title.count <= 240, draft.notes.count <= 20_000 else { return }
         saving = true
         Task {
             defer { saving = false }

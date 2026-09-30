@@ -273,6 +273,7 @@ struct TasksView: View {
             .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) {
                 now = $0
                 Task { await store.updateCurrentBadge(at: now) }
+                if store.hasPendingChanges { Task { await store.refresh() } }
             }
             .onChange(of: scenePhase) { _, phase in if phase == .active { now = Date() } }
             .onChange(of: showProjectTasks) { _, _ in Task { await store.syncBadge() } }

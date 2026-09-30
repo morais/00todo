@@ -59,6 +59,8 @@ Authenticated routes require `Authorization: Bearer <app credential>`. `/health`
 
 Projects are completable top-level items with notes, sort order, independent nullable `startDate` and `dueDate`, an optional `startTime` (24-hour `HH:mm`, requiring `startDate`), and tasks as subtasks. `GET /v1/projects` defaults to `view=all`; `view=available` hides future-start projects, `view=upcoming` lists them, and `view=completed` lists completed projects. `GET /v1/tasks` defaults to `view=available`; alternatives are `upcoming`, `completed`, and `all`. `today=YYYY-MM-DD` and `time=HH:mm` can override the server's clock for filtering; otherwise the configured default time zone is used. Available means incomplete with neither the task nor its project starting in the future, and with the project itself still open. Start times are local wall-clock times in the app or the API's selected time zone, not UTC timestamps. Deleting a project makes its subtasks standalone tasks.
 
+Create requests may include a client-generated UUID `id` for a task, project, or each task in a project batch. Repeating a create with the same ID returns the existing item, allowing the iOS offline queue to retry after a lost response without making duplicates. IDs remain tenant-scoped in all reads and updates.
+
 ## MCP
 
 `POST /mcp` supports JSON-RPC `initialize`, `ping`, `tools/list`, and `tools/call`. Tools list/create/update/delete tasks and projects and use the same validation as REST. The endpoint returns a `WWW-Authenticate` challenge with protected-resource metadata when authentication is absent. The endpoint is stateless; OAuth is required to obtain a bearer token.

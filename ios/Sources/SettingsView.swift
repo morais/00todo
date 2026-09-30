@@ -28,11 +28,14 @@ struct SettingsView: View {
                 } header: {
                     Text("Server")
                 } footer: {
-                    Text("Changing servers signs you out and clears the local task cache.")
+                    Text("Changing servers signs you out. Sync pending changes first.")
                 }
                 Section("Sync") {
                     Button("Refresh now") { Task { await store.refresh() } }
                         .disabled(!store.isConfigured || store.refreshing)
+                    if store.hasPendingChanges {
+                        LabeledContent("Changes waiting to sync", value: "\(store.pendingChanges.count)")
+                    }
                     if let message = store.message { Text(message).foregroundStyle(.red) }
                 }
                 Section("Integrations") {
@@ -56,6 +59,10 @@ struct SettingsView: View {
             .onAppear { address = store.serverAddress }
             .confirmationDialog("Sign out of 00Todo?", isPresented: $confirmSignOut) {
                 Button("Sign out", role: .destructive) { Task { await store.signOut(); dismiss() } }
+            } message: {
+                if store.hasPendingChanges {
+                    Text("Unsynced changes stay on this device and will resume when you sign back into this Apple account.")
+                }
             }
             .sheet(isPresented: $showDelete) { DeleteAccountView() }
             .alert("Server settings", isPresented: Binding(

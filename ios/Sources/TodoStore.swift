@@ -18,9 +18,11 @@ enum TodoError: LocalizedError {
 }
 
 private struct APIError: Decodable { var error: String }
-private struct TaskResponse: Decodable { var task: TodoTask }
-private struct ProjectResponse: Decodable { var project: TodoProject }
-private struct ProjectWithTasksResponse: Decodable { var project: TodoProject; var tasks: [TodoTask] }
+private struct HTTPFailure: LocalizedError {
+    let status: Int
+    let detail: String
+    var errorDescription: String? { detail }
+}
 private struct MCPConnectionsResponse: Decodable { var connections: [MCPConnection] }
 private struct AppleLoginResponse: Decodable {
     var token: String
@@ -38,6 +40,9 @@ private struct AppleLoginResponse: Decodable {
     private(set) var token: String
     private(set) var accountEmail: String?
     private(set) var tenantId: String?
+    private(set) var pendingChanges: [PendingMutation] = []
+    private var syncing = false
+    private var refreshAfterCurrent = false
 
     private static let tokenService = "00todo.api-token"
 
@@ -47,11 +52,8 @@ private struct AppleLoginResponse: Decodable {
         token = Self.readToken()
         accountEmail = UserDefaults.standard.string(forKey: "accountEmail")
         tenantId = UserDefaults.standard.string(forKey: "tenantId")
-        if !token.isEmpty, tenantId != nil,
-           let cached = try? Data(contentsOf: Self.cacheURL),
-           let snapshot = try? JSONDecoder().decode(TodoSnapshot.self, from: cached) {
-            projects = snapshot.projects
-            tasks = snapshot.tasks
+        if !token.isEmpty, tenantId != nil {
+            loadCachedState()
         } else if token.isEmpty || tenantId == nil {
             WidgetSnapshotStore.clear()
             WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
@@ -60,6 +62,7 @@ private struct AppleLoginResponse: Decodable {
     }
 
     var isConfigured: Bool { !serverAddress.isEmpty && !token.isEmpty }
+    var hasPendingChanges: Bool { !pendingChanges.isEmpty }
 
     func configureServer(address: String) throws {
         let cleaned = address.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -69,7 +72,12 @@ private struct AppleLoginResponse: Decodable {
               url.path.isEmpty || url.path == "/" else {
             throw TodoError.invalidServer
         }
-        if cleaned != serverAddress { clearLocalSession() }
+        if cleaned != serverAddress {
+            guard pendingChanges.isEmpty else {
+                throw TodoError.server("Sync pending changes before changing servers.")
+            }
+            clearLocalSession()
+        }
         serverAddress = cleaned
         UserDefaults.standard.set(cleaned, forKey: "serverAddress")
     }
@@ -92,6 +100,7 @@ private struct AppleLoginResponse: Decodable {
         if tenantId != login.tenant.id {
             projects = []
             tasks = []
+            pendingChanges = []
             try? FileManager.default.removeItem(at: Self.cacheURL)
             WidgetSnapshotStore.clear()
             WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
@@ -102,6 +111,7 @@ private struct AppleLoginResponse: Decodable {
         tenantId = login.tenant.id
         UserDefaults.standard.set(login.tenant.email, forKey: "accountEmail")
         UserDefaults.standard.set(login.tenant.id, forKey: "tenantId")
+        loadCachedState()
         await refresh()
     }
 
@@ -116,7 +126,9 @@ private struct AppleLoginResponse: Decodable {
         let _: [String: Bool] = try await request("/v1/auth/delete-account", method: "POST", body: [
             "identityToken": identityToken, "authorizationCode": authorizationCode, "nonce": rawNonce
         ])
+        let deletedTenant = tenantId
         clearLocalSession()
+        if let deletedTenant { try? FileManager.default.removeItem(at: Self.stateURL(for: deletedTenant)) }
     }
 
     private func clearLocalSession() {
@@ -125,6 +137,7 @@ private struct AppleLoginResponse: Decodable {
         tenantId = nil
         projects = []
         tasks = []
+        pendingChanges = []
         message = nil
         Self.deleteToken()
         UserDefaults.standard.removeObject(forKey: "accountEmail")
@@ -163,106 +176,229 @@ private struct AppleLoginResponse: Decodable {
 
     func refresh() async {
         guard isConfigured else { return }
+        guard !refreshing else {
+            refreshAfterCurrent = true
+            return
+        }
+        let currentTenant = tenantId
+        let currentToken = token
         refreshing = true
-        defer { refreshing = false }
+        defer {
+            refreshing = false
+            if refreshAfterCurrent {
+                refreshAfterCurrent = false
+                Task { await refresh() }
+            }
+        }
+        if !pendingChanges.isEmpty {
+            guard await flushPendingChanges() else { return }
+        }
         do {
             let snapshot: TodoSnapshot = try await request("/v1/snapshot")
+            guard tenantId == currentTenant, token == currentToken, pendingChanges.isEmpty else { return }
             projects = snapshot.projects
             tasks = snapshot.tasks
-            if let data = try? JSONEncoder().encode(snapshot) {
-                try? FileManager.default.createDirectory(at: Self.cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try? data.write(to: Self.cacheURL, options: .atomic)
-            }
+            try saveLocalState()
             if WidgetSnapshotStore.save(widgetSnapshot) {
                 WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
             }
             await syncBadge()
             message = nil
         } catch {
-            message = error.localizedDescription
+            if tenantId == currentTenant, token == currentToken { message = error.localizedDescription }
         }
     }
 
     func createTask(_ draft: TaskDraft) async throws {
-        let response: TaskResponse = try await request("/v1/tasks", method: "POST", body: draft.payload)
-        tasks.append(response.task)
-        await refresh()
+        let id = UUID().uuidString.lowercased()
+        let now = Self.timestamp()
+        var body = draft.payload
+        body["id"] = id
+        let change = try PendingMutation(method: "POST", path: "/v1/tasks", body: body)
+        try record(change) {
+            tasks.append(TodoTask(id: id, title: draft.title.trimmingCharacters(in: .whitespacesAndNewlines),
+                                  notes: draft.notes, projectId: draft.projectId,
+                                  startDate: draft.hasStart ? TodoDates.string(from: draft.start) : nil,
+                                  startTime: draft.hasStart && draft.hasStartTime ? TodoDates.timeString(from: draft.startTime) : nil,
+                                  dueDate: draft.hasDue ? TodoDates.string(from: draft.due) : nil,
+                                  completedAt: nil, sortOrder: 0, createdAt: now, updatedAt: now))
+        }
     }
 
     func updateTask(_ id: String, draft: TaskDraft) async throws {
-        let response: TaskResponse = try await request("/v1/tasks/\(id)", method: "PATCH", body: draft.payload)
-        if let index = tasks.firstIndex(where: { $0.id == id }) { tasks[index] = response.task }
-        await refresh()
+        guard let index = tasks.firstIndex(where: { $0.id == id }) else { throw TodoError.server("Task not found") }
+        let change = try PendingMutation(method: "PATCH", path: "/v1/tasks/\(id)", body: draft.payload)
+        try record(change) {
+            tasks[index].title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            tasks[index].notes = draft.notes
+            tasks[index].projectId = draft.projectId
+            tasks[index].startDate = draft.hasStart ? TodoDates.string(from: draft.start) : nil
+            tasks[index].startTime = draft.hasStart && draft.hasStartTime ? TodoDates.timeString(from: draft.startTime) : nil
+            tasks[index].dueDate = draft.hasDue ? TodoDates.string(from: draft.due) : nil
+            tasks[index].updatedAt = Self.timestamp()
+        }
     }
 
     func toggle(_ item: TodoTask) async {
         guard let index = tasks.firstIndex(where: { $0.id == item.id }) else { return }
-        let previous = tasks[index]
-        tasks[index].completedAt = previous.completedAt == nil ? ISO8601DateFormatter().string(from: Date()) : nil
-        await updateCurrentBadge()
+        let completed = tasks[index].completedAt == nil
         do {
-            let response: TaskResponse = try await request("/v1/tasks/\(item.id)", method: "PATCH", body: ["completed": previous.completedAt == nil])
-            if let current = tasks.firstIndex(where: { $0.id == item.id }) { tasks[current] = response.task }
-            await refresh()
+            let change = try PendingMutation(method: "PATCH", path: "/v1/tasks/\(item.id)", body: ["completed": completed])
+            try record(change) { tasks[index].completedAt = completed ? Self.timestamp() : nil }
         } catch {
-            if let current = tasks.firstIndex(where: { $0.id == item.id }) { tasks[current] = previous }
-            await updateCurrentBadge()
             message = error.localizedDescription
         }
     }
 
     func deleteTask(_ id: String) async throws {
-        let _: [String: Bool] = try await request("/v1/tasks/\(id)", method: "DELETE")
-        tasks.removeAll { $0.id == id }
-        await refresh()
+        let change = try PendingMutation(method: "DELETE", path: "/v1/tasks/\(id)")
+        try record(change) { tasks.removeAll { $0.id == id } }
     }
 
     func createProject(_ draft: ProjectDraft) async throws {
-        let response: ProjectResponse = try await request("/v1/projects", method: "POST", body: draft.payload)
-        projects.append(response.project)
-        await refresh()
+        try await createProject(draft, subtasks: [])
     }
 
     func createProject(_ draft: ProjectDraft, subtasks: [String]) async throws {
-        let response: ProjectWithTasksResponse = try await request(
-            "/v1/projects-with-tasks", method: "POST", body: [
-                "project": draft.payload,
-                "tasks": subtasks.enumerated().map { index, title in
-                    ["title": title.trimmingCharacters(in: .whitespacesAndNewlines),
-                     "notes": "", "startDate": NSNull(), "startTime": NSNull(), "dueDate": NSNull(), "sortOrder": index] as [String: Any]
-                }
-            ]
-        )
-        projects.append(response.project)
-        tasks.append(contentsOf: response.tasks)
-        await refresh()
+        let projectId = UUID().uuidString.lowercased()
+        let now = Self.timestamp()
+        var projectBody = draft.payload
+        projectBody["id"] = projectId
+        let childIDs = subtasks.map { _ in UUID().uuidString.lowercased() }
+        let taskBodies: [[String: Any]] = subtasks.enumerated().map { index, title in
+            ["id": childIDs[index], "title": title.trimmingCharacters(in: .whitespacesAndNewlines),
+             "notes": "", "startDate": NSNull(), "startTime": NSNull(), "dueDate": NSNull(), "sortOrder": index]
+        }
+        let change = try PendingMutation(method: "POST", path: "/v1/projects-with-tasks",
+                                         body: ["project": projectBody, "tasks": taskBodies])
+        try record(change) {
+            projects.append(TodoProject(id: projectId, name: draft.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                                        notes: draft.notes, startDate: draft.hasStart ? TodoDates.string(from: draft.start) : nil,
+                                        startTime: draft.hasStart && draft.hasStartTime ? TodoDates.timeString(from: draft.startTime) : nil,
+                                        dueDate: draft.hasDue ? TodoDates.string(from: draft.due) : nil,
+                                        completedAt: nil, sortOrder: 0, createdAt: now, updatedAt: now))
+            for (index, title) in subtasks.enumerated() {
+                tasks.append(TodoTask(id: childIDs[index], title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                                      notes: "", projectId: projectId, startDate: nil, startTime: nil, dueDate: nil,
+                                      completedAt: nil, sortOrder: index, createdAt: now, updatedAt: now))
+            }
+        }
     }
 
     func updateProject(_ id: String, draft: ProjectDraft) async throws {
-        let response: ProjectResponse = try await request("/v1/projects/\(id)", method: "PATCH", body: draft.payload)
-        if let index = projects.firstIndex(where: { $0.id == id }) { projects[index] = response.project }
-        await refresh()
+        guard let index = projects.firstIndex(where: { $0.id == id }) else { throw TodoError.server("Project not found") }
+        let change = try PendingMutation(method: "PATCH", path: "/v1/projects/\(id)", body: draft.payload)
+        try record(change) {
+            projects[index].name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            projects[index].notes = draft.notes
+            projects[index].startDate = draft.hasStart ? TodoDates.string(from: draft.start) : nil
+            projects[index].startTime = draft.hasStart && draft.hasStartTime ? TodoDates.timeString(from: draft.startTime) : nil
+            projects[index].dueDate = draft.hasDue ? TodoDates.string(from: draft.due) : nil
+            projects[index].updatedAt = Self.timestamp()
+        }
     }
 
     func toggle(_ item: TodoProject) async {
         guard let index = projects.firstIndex(where: { $0.id == item.id }) else { return }
-        let previous = projects[index]
-        projects[index].completedAt = previous.completedAt == nil ? ISO8601DateFormatter().string(from: Date()) : nil
-        await updateCurrentBadge()
+        let completed = projects[index].completedAt == nil
         do {
-            let response: ProjectResponse = try await request("/v1/projects/\(item.id)", method: "PATCH", body: ["completed": previous.completedAt == nil])
-            if let current = projects.firstIndex(where: { $0.id == item.id }) { projects[current] = response.project }
-            await refresh()
+            let change = try PendingMutation(method: "PATCH", path: "/v1/projects/\(item.id)", body: ["completed": completed])
+            try record(change) { projects[index].completedAt = completed ? Self.timestamp() : nil }
         } catch {
-            if let current = projects.firstIndex(where: { $0.id == item.id }) { projects[current] = previous }
-            await updateCurrentBadge()
             message = error.localizedDescription
         }
     }
 
     func deleteProject(_ id: String) async throws {
-        let _: [String: Bool] = try await request("/v1/projects/\(id)", method: "DELETE")
-        await refresh()
+        let change = try PendingMutation(method: "DELETE", path: "/v1/projects/\(id)")
+        try record(change) {
+            projects.removeAll { $0.id == id }
+            for index in tasks.indices where tasks[index].projectId == id { tasks[index].projectId = nil }
+        }
+    }
+
+    private static func timestamp() -> String { ISO8601DateFormatter().string(from: Date()) }
+
+    private func record(_ mutation: PendingMutation, apply: () -> Void) throws {
+        guard isConfigured, tenantId != nil else { throw TodoError.notConfigured }
+        let oldProjects = projects
+        let oldTasks = tasks
+        apply()
+        pendingChanges.append(mutation)
+        do { try saveLocalState() }
+        catch {
+            projects = oldProjects
+            tasks = oldTasks
+            pendingChanges.removeLast()
+            throw TodoError.server("Couldn't save this change on the device: \(error.localizedDescription)")
+        }
+        if WidgetSnapshotStore.save(widgetSnapshot) {
+            WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
+        }
+        Task { await refresh() }
+        Task { await syncBadge() }
+    }
+
+    private func flushPendingChanges() async -> Bool {
+        guard !syncing else { return false }
+        let currentTenant = tenantId
+        let currentToken = token
+        syncing = true
+        defer { syncing = false }
+        while let mutation = pendingChanges.first {
+            do {
+                _ = try await send(mutation.path, method: mutation.method, rawBody: mutation.body)
+            } catch let error as HTTPFailure where mutation.method == "DELETE" && error.status == 404 {
+                // A retried delete already took effect before the previous response was lost.
+            } catch {
+                if tenantId == currentTenant, token == currentToken {
+                    message = "Saved on this device; waiting to sync. \(error.localizedDescription)"
+                }
+                return false
+            }
+            guard tenantId == currentTenant, token == currentToken,
+                  pendingChanges.first?.id == mutation.id else { return false }
+            pendingChanges.removeFirst()
+            do { try saveLocalState() }
+            catch {
+                pendingChanges.insert(mutation, at: 0)
+                message = "Couldn't update the local sync queue: \(error.localizedDescription)"
+                return false
+            }
+        }
+        message = nil
+        return true
+    }
+
+    private func loadCachedState() {
+        guard let tenantId else { return }
+        if let data = try? Data(contentsOf: Self.stateURL(for: tenantId)),
+           let state = try? JSONDecoder().decode(OfflineState.self, from: data),
+           state.tenantId == tenantId, state.serverAddress == serverAddress {
+            projects = state.snapshot.projects
+            tasks = state.snapshot.tasks
+            pendingChanges = state.pending
+        } else if let data = try? Data(contentsOf: Self.cacheURL),
+                  let snapshot = try? JSONDecoder().decode(TodoSnapshot.self, from: data) {
+            projects = snapshot.projects
+            tasks = snapshot.tasks
+            pendingChanges = []
+        }
+    }
+
+    private func saveLocalState() throws {
+        guard let tenantId else { throw TodoError.notConfigured }
+        let state = OfflineState(tenantId: tenantId, serverAddress: serverAddress,
+                                 snapshot: TodoSnapshot(projects: projects, tasks: tasks, serverTime: Self.timestamp()),
+                                 pending: pendingChanges)
+        let data = try JSONEncoder().encode(state)
+        let url = Self.stateURL(for: tenantId)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
+    }
+
+    private static func stateURL(for tenantId: String) -> URL {
+        cacheURL.deletingLastPathComponent().appendingPathComponent("state-\(tenantId).json")
     }
 
     func fetchMCPConnections() async throws -> [MCPConnection] {
@@ -275,27 +411,35 @@ private struct AppleLoginResponse: Decodable {
     }
 
     private func request<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> T {
+        let rawBody = try body.map { try JSONSerialization.data(withJSONObject: $0) }
+        let data = try await send(path, method: method, rawBody: rawBody)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    private func send(_ path: String, method: String, rawBody: Data?) async throws -> Data {
         guard isConfigured else { throw TodoError.notConfigured }
+        let requestToken = token
         guard let base = URL(string: serverAddress), let url = URL(string: path, relativeTo: base)?.absoluteURL else { throw TodoError.invalidServer }
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(requestToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        if let body {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        if let rawBody {
+            request.httpBody = rawBody
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw TodoError.server("No server response") }
         if response.statusCode == 401 {
-            clearLocalSession()
-            throw TodoError.server("Your session expired. Sign in with Apple again.")
+            if pendingChanges.isEmpty, token == requestToken { clearLocalSession() }
+            throw HTTPFailure(status: 401, detail: "Your session expired. Sign in with Apple again.")
         }
         guard (200..<300).contains(response.statusCode) else {
-            throw TodoError.server((try? JSONDecoder().decode(APIError.self, from: data).error) ?? "Server error \(response.statusCode)")
+            throw HTTPFailure(status: response.statusCode,
+                              detail: (try? JSONDecoder().decode(APIError.self, from: data).error) ?? "Server error \(response.statusCode)")
         }
-        return try JSONDecoder().decode(T.self, from: data)
+        return data
     }
 
     private static var cacheURL: URL {

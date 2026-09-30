@@ -7,6 +7,7 @@ const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
 const timeOnly = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a 24-hour HH:mm time");
 
 export const ProjectInput = z.strictObject({
+  id: z.uuid().optional(),
   name: z.string().trim().min(1).max(120),
   notes: z.string().max(20000).default(""),
   startDate: dateOnly.nullable().default(null),
@@ -26,6 +27,7 @@ export const ProjectPatch = z.strictObject({
 });
 
 export const TaskInput = z.strictObject({
+  id: z.uuid().optional(),
   title: z.string().trim().min(1).max(240),
   notes: z.string().max(20000).default(""),
   projectId: z.uuid().nullable().default(null),

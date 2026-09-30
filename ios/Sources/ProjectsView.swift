@@ -98,6 +98,7 @@ struct ProjectEditor: View {
                 TextEditor(text: $draft.notes)
                     .frame(minHeight: 90)
                     .accessibilityLabel("Notes")
+                NotesLinkButtons(notes: draft.notes)
             }
             Section {
                 StartScheduleFields(hasStart: $draft.hasStart, start: $draft.start,
@@ -134,7 +135,8 @@ struct ProjectEditor: View {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save() }
-                    .disabled(saving || deleting || draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(saving || deleting || draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || draft.name.count > 120 || draft.notes.count > 20_000)
             }
         }
         .confirmationDialog("Delete project? Its subtasks will become standalone tasks.", isPresented: $confirmDelete) {
@@ -157,6 +159,8 @@ struct ProjectEditor: View {
     }
 
     private func save() {
+        guard !saving, !deleting, !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              draft.name.count <= 120, draft.notes.count <= 20_000 else { return }
         saving = true
         Task {
             defer { saving = false }
@@ -209,7 +213,10 @@ struct ProjectTasksView: View {
             let current = store.projects.first(where: { $0.id == project.id }) ?? project
             let visibleNotes = QuickAddNotes.cleaned(current.notes)
             if !visibleNotes.isEmpty {
-                Section { Text(visibleNotes) }
+                Section {
+                    Text(visibleNotes)
+                    NotesLinkButtons(notes: visibleNotes)
+                }
             }
             if items.isEmpty && upcomingItems.isEmpty && completedItems.isEmpty {
                 ContentUnavailableView("No tasks", systemImage: "checklist")

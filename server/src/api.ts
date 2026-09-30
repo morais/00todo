@@ -155,19 +155,29 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
   if (path === "/v1/projects" && method === "POST") {
     const input = ProjectInput.parse(await body(req));
     ensureStartTime(input.startDate, input.startTime);
-    const id = crypto.randomUUID();
+    const id = input.id ?? crypto.randomUUID();
     await env.DB.prepare(`INSERT INTO projects
       (id, tenant_id, name, notes, start_date, start_time, due_date, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`)
       .bind(id, tenantId, input.name, input.notes, input.startDate, input.startTime, input.dueDate, input.sortOrder, now, now).run();
-    return json({ project: project(ensureProject(await findProject(env.DB, id, tenantId))) }, 201);
+    const saved = await findProject(env.DB, id, tenantId);
+    if (!saved) throw new HttpError(409, "Project ID belongs to another account");
+    return json({ project: project(saved) }, 201);
   }
   if (path === "/v1/projects-with-tasks" && method === "POST") {
     const input = ProjectWithTasksInput.parse(await body(req));
     ensureStartTime(input.project.startDate, input.project.startTime);
     for (const item of input.tasks) ensureStartTime(item.startDate, item.startTime);
-    const projectId = crypto.randomUUID();
-    const taskIds = input.tasks.map(() => crypto.randomUUID());
+    const projectId = input.project.id ?? crypto.randomUUID();
+    const taskIds = input.tasks.map((item) => item.id ?? crypto.randomUUID());
+    const existing = await findProject(env.DB, projectId, tenantId);
+    if (existing) {
+      const savedTasks = await Promise.all(taskIds.map((id) => findTask(env.DB, id, tenantId)));
+      if (savedTasks.some((item) => item === null || item.project_id !== projectId)) {
+        throw new HttpError(409, "Project ID already exists");
+      }
+      return json({ project: project(existing), tasks: savedTasks.map((item) => task(item!)) });
+    }
     const statements = [
       env.DB.prepare(`INSERT INTO projects
         (id, tenant_id, name, notes, start_date, start_time, due_date, sort_order, created_at, updated_at)
@@ -180,7 +190,17 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
         .bind(taskIds[index], tenantId, item.title, item.notes, projectId, item.startDate,
           item.startTime, item.dueDate, item.sortOrder, now, now)),
     ];
-    await env.DB.batch(statements);
+    try { await env.DB.batch(statements); }
+    catch (cause) {
+      if (await findProject(env.DB, projectId, tenantId)) {
+        const savedTasks = await Promise.all(taskIds.map((id) => findTask(env.DB, id, tenantId)));
+        if (savedTasks.every((item) => item !== null && item.project_id === projectId)) {
+          return json({ project: project(ensureProject(await findProject(env.DB, projectId, tenantId))),
+            tasks: savedTasks.map((item) => task(item!)) });
+        }
+      }
+      throw cause;
+    }
     return json({
       project: project(ensureProject(await findProject(env.DB, projectId, tenantId))),
       tasks: (await env.DB.prepare("SELECT * FROM tasks WHERE tenant_id = ? AND project_id = ? ORDER BY sort_order, created_at, id")
@@ -242,16 +262,22 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
   }
   if (path === "/v1/tasks" && method === "POST") {
     const input = TaskInput.parse(await body(req));
+    if (input.id) {
+      const existing = await findTask(env.DB, input.id, tenantId);
+      if (existing) return json({ task: task(existing) });
+    }
     ensureStartTime(input.startDate, input.startTime);
     await checkProjectId(env.DB, input.projectId, tenantId);
-    const id = crypto.randomUUID();
+    const id = input.id ?? crypto.randomUUID();
     await env.DB.prepare(`INSERT INTO tasks
       (id, tenant_id, title, notes, project_id, start_date, start_time, due_date, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`).bind(
       id, tenantId, input.title, input.notes, input.projectId, input.startDate, input.startTime, input.dueDate,
       input.sortOrder, now, now,
     ).run();
-    return json({ task: task(ensureTask(await findTask(env.DB, id, tenantId))) }, 201);
+    const saved = await findTask(env.DB, id, tenantId);
+    if (!saved) throw new HttpError(409, "Task ID belongs to another account");
+    return json({ task: task(saved) }, 201);
   }
   const taskMatch = /^\/v1\/tasks\/([a-f0-9-]{36})$/.exec(path);
   if (taskMatch) {
