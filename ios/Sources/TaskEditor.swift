@@ -78,7 +78,7 @@ struct TaskEditor: View {
             Section {
                 Picker("Project", selection: $draft.projectId) {
                     Text("No project · top-level task").tag(String?.none)
-                    ForEach(store.projects) { project in
+                    ForEach(store.projects.filter { $0.completedAt == nil || $0.id == draft.projectId }) { project in
                         Text(project.name).tag(Optional(project.id))
                     }
                 }
@@ -119,8 +119,10 @@ struct TaskEditor: View {
         .navigationTitle(task == nil ? "New task" : "Edit task")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
+            if task == nil {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save() }

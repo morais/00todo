@@ -237,6 +237,10 @@ struct TasksView: View {
         }
             .contentMargins(.top, verticalSizeClass == .compact ? 0 : nil, for: .scrollContent)
             .refreshable { await store.refresh() }
+            .modifier(PullUpToAddTask(enabled: filter != .completed) {
+                guard !showNewItem, store.isConfigured else { return }
+                showNewItem = true
+            })
     }
 
     var body: some View {

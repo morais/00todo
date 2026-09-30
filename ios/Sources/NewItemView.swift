@@ -145,7 +145,7 @@ struct NewItemView: View {
                 Section {
                     Picker("Project", selection: $projectId) {
                         Text("No project · top-level task").tag(String?.none)
-                        ForEach(store.projects) { project in
+                        ForEach(store.projects.filter { $0.completedAt == nil }) { project in
                             Text(project.name).tag(Optional(project.id))
                         }
                     }

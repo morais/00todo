@@ -22,6 +22,8 @@ The 00Todo Available Home Screen widget supports Small, Medium, Large, and iPad 
 
 Quick Add treats a single action as a task. Explicit projects and lists, or requests with multiple distinct subtasks, become projects. A model-generated project with only one subtask collapses to a task, using the subtask's title when distinct, unless the user explicitly asked for a project.
 
+Existing task editors use the navigation Back button without a second Cancel button. Task project pickers exclude completed projects, except when editing a task already assigned to one. At the bottom of Available or Upcoming, a deliberate upward pull opens New Task; Completed does not use this gesture.
+
 For a simulator compile without signing:
 
 ```sh

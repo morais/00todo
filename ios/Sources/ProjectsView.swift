@@ -265,6 +265,7 @@ struct ProjectTasksView: View {
                     .accessibilityLabel("Edit project")
                 Button { showNewTask = true } label: { Image(systemName: "plus") }
                     .accessibilityLabel("New task")
+                    .disabled((store.projects.first(where: { $0.id == project.id }) ?? project).completedAt != nil)
             }
         }
         .sheet(isPresented: $showNewTask) {
