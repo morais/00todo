@@ -45,6 +45,8 @@ For public MCP review, set up a dedicated tenant with `node scripts/provision-re
 
 The code is stored only as a SHA-256 hash in `review_credentials`. It has no REST or MCP bearer scope: it can only select the allowlisted demo tenant for a pending, rate-limited OAuth flow, followed by the normal client consent screen. Remove the UUID from `REVIEW_TENANT_IDS` to disable reviewer sign-in immediately. A review code can also be revoked in D1 by setting `revoked_at`; separately revoke any issued MCP grants when review ends.
 
+For OpenAI domain verification, put the portal's exact `OPENAI_APPS_CHALLENGE_TOKEN` in the ignored production `wrangler.toml`. `GET /.well-known/openai-apps-challenge` then returns only that token as uncached plain text; it returns 404 when unset. The route also supports HEAD and no trailing-slash alias.
+
 Three Workers Rate Limiting bindings in `wrangler.toml.sample` cap traffic before D1 is touched: 600 requests a minute per IP, 20 sign-in or OAuth requests a minute per IP, and 300 authenticated requests a minute per account. Refused requests get `429` with `Retry-After: 60`. Each account is also capped at 5,000 tasks and 1,000 projects.
 
 All task/project queries include `tenant_id`, and D1 triggers prevent a task from referring to another tenant's project. A legacy tenant preserves any old local prototype data without exposing it to Apple accounts.

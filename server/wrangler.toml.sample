@@ -31,6 +31,10 @@ APPLE_KEY_ID = "REPLACE_WITH_SIGN_IN_WITH_APPLE_KEY_ID"
 # works only for a tenant on this allowlist, and only on the MCP consent page.
 # REVIEW_TENANT_IDS = "<dedicated-review-tenant-uuid>"
 
+# OpenAI plugin-submission domain verification. Set the exact portal token in
+# the gitignored production wrangler.toml; unset means the route returns 404.
+# OPENAI_APPS_CHALLENGE_TOKEN = "REPLACE_WITH_OPENAI_APPS_CHALLENGE_TOKEN"
+
 # Replace with the hostname you own before deployment. The planned production
 # host is 00todo.com; api.example.com keeps this public sample deploy-safe.
 [[routes]]

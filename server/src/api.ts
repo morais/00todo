@@ -16,6 +16,7 @@ export interface Env {
   OAUTH_SIGNING_SECRET?: string;
   MCP_VERIFIED_CLIENTS?: string;
   REVIEW_TENANT_IDS?: string;
+  OPENAI_APPS_CHALLENGE_TOKEN?: string;
   APP_NAME?: string;
   SOURCE_LIMITER?: RateLimit;
   SIGN_IN_LIMITER?: RateLimit;

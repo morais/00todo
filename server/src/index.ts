@@ -4,6 +4,7 @@ import { authenticate, publicOrigin } from "./auth";
 import { deleteAccount, signInWithApple, signOut } from "./appAuth";
 import { disconnectMcpConnection, listMcpConnections } from "./mcpConnections";
 import { maybeSweep, sweepExpiredAuthData } from "./cleanup";
+import { openAIAppsChallenge } from "./openAIAppsChallenge";
 import { signInAllowed, sourceAllowed, tenantAllowed, tooManyRequests } from "./rateLimit";
 import {
   appleCallback, authChallenge, authorizationServerMetadata, beginAuthorization,
@@ -23,6 +24,9 @@ export default {
     const method = req.method;
     if (path === "/health" && method === "GET") return json({ ok: true });
     if (!(await sourceAllowed(env, req))) return tooManyRequests();
+    if (path === "/.well-known/openai-apps-challenge" && (method === "GET" || method === "HEAD")) {
+      return openAIAppsChallenge(req, env);
+    }
     if (signInRoutes.has(path) && method === "POST" || path === "/oauth/authorize") {
       if (!(await signInAllowed(env, req))) return tooManyRequests();
       maybeSweep(env, ctx);
