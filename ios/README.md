@@ -19,6 +19,7 @@ The App Store icon, in-app mark, and light/dark wordmarks come from the 00Widget
 The 00Todo name and artwork are not MIT licensed (see `docs/brand/LICENSE`). A fork that ships its own app should:
 
 - Set `TodoAppName` and `CFBundleDisplayName` for all three targets in `project.yml`. The app, widget, and share extension read their user-visible name from `TodoAppName` through `AppBrand.name`.
+- Set `TODO_URL_SCHEME` in `project.yml` to your own URL scheme. The app registers it and the widget builds its links from it through `AppBrand.urlScheme`; sharing 00Todo's scheme would let the two apps open each other's widget taps.
 - Replace the permission prompts and Home Screen quick action titles in `project.yml`, and the widget configuration title in `Sources/Widgets/QuickAddWidget.swift` (App Intents titles must be literals).
 - Replace `AppIcon`, `BrandMark`, and `BrandWordmark` in `Resources/App/Assets.xcassets`.
 

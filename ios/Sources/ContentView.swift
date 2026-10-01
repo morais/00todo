@@ -6,7 +6,7 @@ enum QuickAddLaunch: String, Identifiable {
     var id: String { rawValue }
 
     init?(url: URL) {
-        guard url.scheme == "zerozerotodo", url.host == "quick-add", url.query == nil, url.fragment == nil else { return nil }
+        guard url.scheme == AppBrand.urlScheme, url.host == "quick-add", url.query == nil, url.fragment == nil else { return nil }
         switch url.path {
         case "/text": self = .text
         case "/voice": self = .voice

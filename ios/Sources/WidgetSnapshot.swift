@@ -107,7 +107,7 @@ enum WidgetDestination: Hashable, Identifiable {
 
     init?(url: URL) {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              components.scheme == "zerozerotodo", components.host == "open",
+              components.scheme == AppBrand.urlScheme, components.host == "open",
               components.user == nil, components.password == nil, components.port == nil,
               components.fragment == nil, let query = components.queryItems, query.count == 1,
               query[0].name == "id", let recordID = query[0].value, !recordID.isEmpty else { return nil }
@@ -120,7 +120,7 @@ enum WidgetDestination: Hashable, Identifiable {
 
     var url: URL {
         var components = URLComponents()
-        components.scheme = "zerozerotodo"
+        components.scheme = AppBrand.urlScheme
         components.host = "open"
         switch self {
         case .task(let id):

@@ -13,4 +13,12 @@ enum AppBrand {
         }
         return "Todo"
     }()
+
+    /// The URL scheme for widget and quick-action links, from the
+    /// `TodoURLScheme` Info.plist key. Two apps registering the same scheme
+    /// would steal each other's widget taps, so a fork sets its own.
+    static let urlScheme: String = {
+        let value = Bundle.main.object(forInfoDictionaryKey: "TodoURLScheme") as? String
+        return value.flatMap { $0.isEmpty ? nil : $0.lowercased() } ?? "zerozerotodo"
+    }()
 }

@@ -42,9 +42,9 @@ private struct AvailableWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: AvailableEntry
 
-    private let voiceURL = URL(string: "zerozerotodo://quick-add/voice")!
-    private let textURL = URL(string: "zerozerotodo://quick-add/text")!
-    private let homeURL = URL(string: "zerozerotodo://open/home")!
+    private let voiceURL = URL(string: "\(AppBrand.urlScheme)://quick-add/voice")!
+    private let textURL = URL(string: "\(AppBrand.urlScheme)://quick-add/text")!
+    private let homeURL = URL(string: "\(AppBrand.urlScheme)://open/home")!
 
     private var rowLimit: Int {
         switch family {

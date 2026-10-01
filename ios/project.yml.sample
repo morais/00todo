@@ -11,6 +11,9 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
+    # Widget and quick-action link scheme. Use your own in a fork, so the two
+    # apps cannot open each other's links.
+    TODO_URL_SCHEME: zerozerotodo
 targets:
   ZeroZeroTodo:
     type: application
@@ -27,6 +30,7 @@ targets:
       properties:
         CFBundleDisplayName: 00Todo
         TodoAppName: 00Todo
+        TodoURLScheme: $(TODO_URL_SCHEME)
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
@@ -37,9 +41,9 @@ targets:
         NSSpeechRecognitionUsageDescription: "00Todo transcribes your spoken task or shopping list on your device."
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
-            CFBundleURLName: zerozerotodo.quick-add
+            CFBundleURLName: $(TODO_URL_SCHEME).quick-add
             CFBundleURLSchemes:
-              - zerozerotodo
+              - $(TODO_URL_SCHEME)
         UIApplicationShortcutItems:
           - UIApplicationShortcutItemType: com.00todo.quick-add.voice
             UIApplicationShortcutItemTitle: Speak to 00Todo
@@ -84,6 +88,7 @@ targets:
       properties:
         CFBundleDisplayName: 00Todo
         TodoAppName: 00Todo
+        TodoURLScheme: $(TODO_URL_SCHEME)
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         TodoAppGroup: group.com.example.zerozerotodo
