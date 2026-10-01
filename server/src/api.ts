@@ -72,6 +72,8 @@ export function timeInZone(instant: Date, zone: string): string {
   }
 }
 
+const snapshotCompletedDays = 90;
+
 function error(message: string, status: number): Response {
   return json({ error: message }, status);
 }
@@ -169,14 +171,25 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
     if (etag && req.headers.get("if-none-match") === etag) {
       return new Response(null, { status: 304, headers: { ETag: etag, "Cache-Control": "no-store" } });
     }
+    // Completed history older than the window stays in D1 and in the list
+    // endpoints, but is left out of the app's snapshot so the payload stays
+    // proportional to what is current. Tasks of a project completed before
+    // the window go with it.
+    const completedSince = new Date(Date.parse(now) - snapshotCompletedDays * 86400000).toISOString();
     const [projects, tasks] = await env.DB.batch<ProjectRow | TaskRow>([
-      env.DB.prepare("SELECT * FROM projects WHERE tenant_id = ? ORDER BY sort_order, created_at, id").bind(tenantId),
-      env.DB.prepare("SELECT * FROM tasks WHERE tenant_id = ? ORDER BY sort_order, created_at, id").bind(tenantId),
+      env.DB.prepare(`SELECT * FROM projects WHERE tenant_id = ?1
+        AND (completed_at IS NULL OR completed_at >= ?2) ORDER BY sort_order, created_at, id`).bind(tenantId, completedSince),
+      env.DB.prepare(`SELECT * FROM tasks WHERE tenant_id = ?1
+        AND (completed_at IS NULL OR completed_at >= ?2)
+        AND (project_id IS NULL OR project_id NOT IN
+          (SELECT id FROM projects WHERE tenant_id = ?1 AND completed_at < ?2))
+        ORDER BY sort_order, created_at, id`).bind(tenantId, completedSince),
     ]);
     const response = json({
       projects: (projects.results as ProjectRow[]).map(project),
       tasks: (tasks.results as TaskRow[]).map(task),
       serverTime: now,
+      completedSince,
     });
     if (etag) response.headers.set("ETag", etag);
     return response;

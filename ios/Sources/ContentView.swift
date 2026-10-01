@@ -259,6 +259,12 @@ struct TasksView: View {
                         ForEach(section.items) { item in itemRow(item) }
                     }
                 }
+            } else if filter == .completed {
+                Section {
+                    ForEach(items) { item in itemRow(item) }
+                } footer: {
+                    Text("Shows items completed in the last 90 days.")
+                }
             } else {
                 ForEach(items) { item in itemRow(item) }
             }
