@@ -9,10 +9,10 @@ struct DueLabel: View {
 
     var body: some View {
         if isOpen && TodoDates.isOverdue(dueDate, at: Date()) {
-            Label("Overdue · due \(dueDate)", systemImage: "exclamationmark.circle.fill")
+            Label("Overdue · due \(TodoDates.relativeDay(dueDate))", systemImage: "exclamationmark.circle.fill")
                 .foregroundStyle(Color.overdue)
         } else {
-            Text("Due \(dueDate)")
+            Text(TodoDates.dueLabel(dueDate))
         }
     }
 }

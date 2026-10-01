@@ -114,17 +114,43 @@ enum TodoDates {
         return .future
     }
 
-    static func startLabel(date: String, time: String?) -> String {
-        let startDay = Calendar.current.startOfDay(for: TodoDates.date(from: date))
-        let today = Calendar.current.startOfDay(for: Date())
-        let days = Calendar.current.dateComponents([.day], from: today, to: startDay).day ?? 0
-        let relative: String
+    static func startLabel(date: String, time: String?, now: Date = Date()) -> String {
+        let days = daysFromToday(date, now: now)
+        let relative = days >= 2 ? "in \(days) days" : relativeDay(date, now: now)
+        return "Starts \(relative)\(time.map { " at \(displayTime($0))" } ?? "")"
+    }
+
+    static func dueLabel(_ date: String, now: Date = Date()) -> String {
+        "Due \(relativeDay(date, now: now))"
+    }
+
+    /// "today", "tomorrow", "yesterday", "in 3 days", or a localized short
+    /// date such as "5 Oct" (with the year when it differs), never the raw
+    /// YYYY-MM-DD value.
+    static func relativeDay(_ value: String, now: Date = Date()) -> String {
+        let days = daysFromToday(value, now: now)
         switch days {
-        case 0: relative = "today"
-        case 1: relative = "tomorrow"
-        case 2...: relative = "in \(days) days"
-        default: relative = date
+        case 0: return "today"
+        case 1: return "tomorrow"
+        case -1: return "yesterday"
+        case 2...6: return "in \(days) days"
+        default:
+            let day = date(from: value)
+            let sameYear = Calendar.current.component(.year, from: day) == Calendar.current.component(.year, from: now)
+            return sameYear
+                ? day.formatted(.dateTime.day().month(.abbreviated))
+                : day.formatted(.dateTime.day().month(.abbreviated).year())
         }
-        return "Starts \(relative)\(time.map { " at \($0)" } ?? "")"
+    }
+
+    /// A stored HH:mm time in the user's 12- or 24-hour style.
+    static func displayTime(_ value: String) -> String {
+        timeDate(from: value).formatted(date: .omitted, time: .shortened)
+    }
+
+    private static func daysFromToday(_ value: String, now: Date) -> Int {
+        let calendar = Calendar.current
+        return calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
+                                       to: calendar.startOfDay(for: date(from: value))).day ?? 0
     }
 }
