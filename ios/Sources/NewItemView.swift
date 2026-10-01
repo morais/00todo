@@ -1,5 +1,6 @@
 import FoundationModels
 import SwiftUI
+import UIKit
 
 enum NewItemKind: String, CaseIterable, Identifiable {
     case task = "Task"
@@ -216,7 +217,13 @@ struct NewItemView: View {
         )) { Button("OK", role: .cancel) {} } message: { Text(errorText ?? "") }
         .task {
             try? await Task.sleep(for: .milliseconds(250))
-            if startWithVoice && kind == .quickAdd { beginVoice() }
+            // With VoiceOver on, starting the microphone by itself would also
+            // record VoiceOver reading the screen, so wait for a tap instead.
+            if startWithVoice && kind == .quickAdd && !UIAccessibility.isVoiceOverRunning { beginVoice() }
+            else if startWithVoice && kind == .quickAdd {
+                promptFocused = true
+                Self.announce("Double-tap Speak your request to start dictating.")
+            }
             else if kind == .quickAdd { promptFocused = true }
             else { titleFocused = true }
         }
@@ -256,6 +263,11 @@ struct NewItemView: View {
             else { scheduleDraft(immediate: true) }
         }
         .onChange(of: voice.errorText) { _, message in if let message { errorText = message } }
+        .onChange(of: voice.isRecording) { _, recording in
+            // Only announce once the microphone is off; speaking while it
+            // records would put VoiceOver's words into the request.
+            if !recording { Self.announce("Stopped listening") }
+        }
         .onDisappear {
             silenceTask?.cancel()
             draftTask?.cancel()
@@ -355,11 +367,20 @@ struct NewItemView: View {
             if let date = Self.validDate(result.dueDate) { due = date }
             subtasks = shape.subtasks.map(NewSubtask.init(title:))
             hasPreview = true
+            // The draft replaces the form below the request field; say so,
+            // since nothing moves VoiceOver focus there.
+            let kindName = shape.isProject ? "project" : "task"
+            let count = shape.isProject ? ", \(shape.subtasks.count) \(shape.subtasks.count == 1 ? "subtask" : "subtasks")" : ""
+            Self.announce("Draft ready: \(kindName) \(shape.title)\(count). Review it, then choose Add.")
         } catch {
             guard !Task.isCancelled, draftRequestID == requestID else { return }
             draftFailed = true
             errorText = error.localizedDescription
         }
+    }
+
+    private static func announce(_ message: String) {
+        AccessibilityNotification.Announcement(message).post()
     }
 
     private static func validDate(_ raw: String) -> Date? {
