@@ -85,11 +85,14 @@ def main():
     parser.add_argument("--group-id", required=True)
     parser.add_argument("--build", required=True)
     args = parser.parse_args()
-    query = urllib.parse.urlencode({"filter[app]": args.app_id, "filter[version]": args.build,
-                                    "limit": "10"})
+    # App Store Connect's filter[version] selects the marketing version (for
+    # example 1.0), not the CFBundleVersion build number supplied here.
+    query = urllib.parse.urlencode({"filter[app]": args.app_id, "sort": "-uploadedDate",
+                                    "limit": "200"})
     status, result = request("GET", "/v1/builds?" + query)
     require_ok(status, result, "Finding build")
-    matches = result.get("data", [])
+    matches = [build for build in result.get("data", [])
+               if build["attributes"]["version"] == args.build]
     if len(matches) != 1:
         sys.exit(f"Expected one App Store Connect build {args.build}, found {len(matches)}; it may still be processing")
     build = matches[0]
