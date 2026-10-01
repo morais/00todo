@@ -147,7 +147,9 @@ private struct AvailableTodoWidget: Widget {
         AppIntentConfiguration(kind: kind, intent: AvailableWidgetConfiguration.self, provider: AvailableProvider()) { entry in
             AvailableWidgetView(entry: entry)
         }
-        .configurationDisplayName("\(AppBrand.name) Available")
+        // WidgetKit traps on a display name with interpolated arguments, so
+        // pass a plain String rather than a LocalizedStringKey.
+        .configurationDisplayName(AppBrand.name + " Available")
         .description("See available items. Choose whether to expand projects in Edit Widget.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
     }
