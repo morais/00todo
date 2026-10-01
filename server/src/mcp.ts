@@ -40,6 +40,19 @@ const tools: Tool[] = [
     method: "DELETE", path: (a) => `/v1/projects/${a.id}`, readOnly: false, destructive: true },
 ];
 
+// Tool schemas never change at runtime, so convert them once per isolate
+// rather than on every tools/list.
+let toolList: unknown[] | undefined;
+function listTools(): unknown[] {
+  toolList ??= tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: z.toJSONSchema(tool.schema, { io: "input" }),
+    annotations: { readOnlyHint: tool.readOnly, destructiveHint: Boolean(tool.destructive), idempotentHint: tool.method !== "POST" },
+  }));
+  return toolList;
+}
+
 function rpcResult(id: unknown, result: unknown): Response {
   return json({ jsonrpc: "2.0", id, result });
 }
@@ -75,12 +88,7 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
   }
   if (request.method === "ping") return rpcResult(requestId, {});
   if (request.method === "tools/list") {
-    return rpcResult(requestId, { tools: tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: z.toJSONSchema(tool.schema, { io: "input" }),
-      annotations: { readOnlyHint: tool.readOnly, destructiveHint: Boolean(tool.destructive), idempotentHint: tool.method !== "POST" },
-    })) });
+    return rpcResult(requestId, { tools: listTools() });
   }
   if (request.method !== "tools/call") return rpcError(requestId, -32601, "Method not found");
   const params = request.params;
