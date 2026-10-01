@@ -1,7 +1,7 @@
 import { ProjectInput, ProjectPatch, ProjectWithTasksInput, TaskInput, TaskPatch, inView, projectInView, parseToday, parseTime, type Project, type ProjectView, type Task, type TaskView } from "./model";
 import { ZodError } from "zod";
 import { tenantForPrincipal, type Principal } from "./auth";
-import { capacityProblem } from "./rateLimit";
+import { capacityProblem, tenantLimits } from "./rateLimit";
 
 export interface Env {
   DB: D1Database;
@@ -112,8 +112,25 @@ async function ensureCapacity(db: D1Database, tenantId: string, adding: { tasks?
   if (problem) throw new HttpError(403, problem);
 }
 
-async function checkProjectId(db: D1Database, id: string | null, tenantId: string): Promise<void> {
-  if (id !== null) ensureProject(await findProject(db, id, tenantId));
+/// Each write is one statement that validates through D1's own constraints
+/// and returns the saved row, instead of a read before and after. This maps
+/// those constraint failures back to the API's errors.
+async function write<T>(run: () => Promise<T>): Promise<T> {
+  try { return await run(); }
+  catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    if (message.includes("task tenant or project mismatch")) throw new HttpError(404, "Project not found");
+    if (message.includes("start_date IS NOT NULL")) throw new HttpError(400, "Start time requires a start date");
+    throw cause;
+  }
+}
+
+/// Explains a create that returned no row: an idempotent retry, a full
+/// account, or an ID another account already uses.
+async function createConflict(db: D1Database, tenantId: string, kind: "tasks" | "projects"): Promise<HttpError> {
+  const problem = await capacityProblem(db, tenantId, { [kind]: 1 });
+  if (problem) return new HttpError(403, problem);
+  return new HttpError(409, `${kind === "tasks" ? "Task" : "Project"} ID belongs to another account`);
 }
 
 export async function routeApi(req: Request, env: Env, principal: Principal): Promise<Response> {
@@ -180,19 +197,18 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
   if (path === "/v1/projects" && method === "POST") {
     const input = ProjectInput.parse(await body(req));
     ensureStartTime(input.startDate, input.startTime);
-    if (input.id) {
-      const existing = await findProject(env.DB, input.id, tenantId);
-      if (existing) return json({ project: project(existing) });
-    }
-    await ensureCapacity(env.DB, tenantId, { projects: 1 });
     const id = input.id ?? crypto.randomUUID();
-    await env.DB.prepare(`INSERT INTO projects
+    const saved = await write(() => env.DB.prepare(`INSERT INTO projects
       (id, tenant_id, name, notes, start_date, start_time, due_date, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`)
-      .bind(id, tenantId, input.name, input.notes, input.startDate, input.startTime, input.dueDate, input.sortOrder, now, now).run();
-    const saved = await findProject(env.DB, id, tenantId);
-    if (!saved) throw new HttpError(409, "Project ID belongs to another account");
-    return json({ project: project(saved) }, 201);
+      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9
+      WHERE (SELECT COUNT(*) FROM projects WHERE tenant_id = ?2) < ?10
+      ON CONFLICT(id) DO NOTHING RETURNING *`)
+      .bind(id, tenantId, input.name, input.notes, input.startDate, input.startTime, input.dueDate, input.sortOrder, now,
+        tenantLimits.projects).first<ProjectRow>());
+    if (saved) return json({ project: project(saved) }, 201);
+    const existing = await findProject(env.DB, id, tenantId);
+    if (existing) return json({ project: project(existing) });
+    throw await createConflict(env.DB, tenantId, "projects");
   }
   if (path === "/v1/projects-with-tasks" && method === "POST") {
     const input = ProjectWithTasksInput.parse(await body(req));
@@ -212,16 +228,17 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
     const statements = [
       env.DB.prepare(`INSERT INTO projects
         (id, tenant_id, name, notes, start_date, start_time, due_date, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`)
         .bind(projectId, tenantId, input.project.name, input.project.notes, input.project.startDate,
           input.project.startTime, input.project.dueDate, input.project.sortOrder, now, now),
       ...input.tasks.map((item, index) => env.DB.prepare(`INSERT INTO tasks
         (id, tenant_id, title, notes, project_id, start_date, start_time, due_date, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`)
         .bind(taskIds[index], tenantId, item.title, item.notes, projectId, item.startDate,
           item.startTime, item.dueDate, item.sortOrder, now, now)),
     ];
-    try { await env.DB.batch(statements); }
+    let results: D1Result<ProjectRow | TaskRow>[];
+    try { results = await env.DB.batch<ProjectRow | TaskRow>(statements); }
     catch (cause) {
       if (await findProject(env.DB, projectId, tenantId)) {
         const savedTasks = await Promise.all(taskIds.map((id) => findTask(env.DB, id, tenantId)));
@@ -232,10 +249,10 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
       }
       throw cause;
     }
+    const [savedProject, ...savedTasks] = results.map((result) => result.results[0]);
     return json({
-      project: project(ensureProject(await findProject(env.DB, projectId, tenantId))),
-      tasks: (await env.DB.prepare("SELECT * FROM tasks WHERE tenant_id = ? AND project_id = ? ORDER BY sort_order, created_at, id")
-        .bind(tenantId, projectId).all<TaskRow>()).results.map(task),
+      project: project(savedProject as ProjectRow),
+      tasks: (savedTasks as TaskRow[]).map(task),
     }, 201);
   }
   const projectMatch = /^\/v1\/projects\/([a-f0-9-]{36})$/.exec(path);
@@ -245,9 +262,7 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
     if (method === "PATCH") {
       const input = ProjectPatch.parse(await body(req));
       if (!Object.keys(input).length) throw new HttpError(400, "No changes supplied");
-      const existing = ensureProject(await findProject(env.DB, id, tenantId));
-      ensureStartTime(input.startDate === undefined ? existing.start_date : input.startDate,
-        input.startTime === undefined ? existing.start_time : input.startTime);
+      if (input.startDate === null && input.startTime) ensureStartTime(null, input.startTime);
       const assignments: string[] = [];
       const values: Array<string | number | null> = [];
       if (input.name !== undefined) { assignments.push("name = ?"); values.push(input.name); }
@@ -260,13 +275,14 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
       else if (input.completed === false) assignments.push("completed_at = NULL");
       assignments.push("updated_at = ?");
       values.push(now);
-      await env.DB.prepare(`UPDATE projects SET ${assignments.join(", ")} WHERE id = ? AND tenant_id = ?`)
-        .bind(...values, id, tenantId).run();
-      return json({ project: project(ensureProject(await findProject(env.DB, id, tenantId))) });
+      const saved = await write(() => env.DB.prepare(`UPDATE projects SET ${assignments.join(", ")}
+        WHERE id = ? AND tenant_id = ? RETURNING *`).bind(...values, id, tenantId).first<ProjectRow>());
+      return json({ project: project(ensureProject(saved)) });
     }
     if (method === "DELETE") {
-      ensureProject(await findProject(env.DB, id, tenantId));
-      await env.DB.prepare("DELETE FROM projects WHERE id = ? AND tenant_id = ?").bind(id, tenantId).run();
+      const deleted = await env.DB.prepare("DELETE FROM projects WHERE id = ? AND tenant_id = ? RETURNING id")
+        .bind(id, tenantId).first<{ id: string }>();
+      if (!deleted) throw new HttpError(404, "Project not found");
       return json({ ok: true });
     }
   }
@@ -293,23 +309,22 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
   }
   if (path === "/v1/tasks" && method === "POST") {
     const input = TaskInput.parse(await body(req));
-    if (input.id) {
-      const existing = await findTask(env.DB, input.id, tenantId);
-      if (existing) return json({ task: task(existing) });
-    }
     ensureStartTime(input.startDate, input.startTime);
-    await checkProjectId(env.DB, input.projectId, tenantId);
-    await ensureCapacity(env.DB, tenantId, { tasks: 1 });
     const id = input.id ?? crypto.randomUUID();
-    await env.DB.prepare(`INSERT INTO tasks
+    // The project's owner is checked by a D1 trigger and the item cap by the
+    // WHERE clause, so a new task costs one statement.
+    const saved = await write(() => env.DB.prepare(`INSERT INTO tasks
       (id, tenant_id, title, notes, project_id, start_date, start_time, due_date, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`).bind(
+      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10
+      WHERE (SELECT COUNT(*) FROM tasks WHERE tenant_id = ?2) < ?11
+      ON CONFLICT(id) DO NOTHING RETURNING *`).bind(
       id, tenantId, input.title, input.notes, input.projectId, input.startDate, input.startTime, input.dueDate,
-      input.sortOrder, now, now,
-    ).run();
-    const saved = await findTask(env.DB, id, tenantId);
-    if (!saved) throw new HttpError(409, "Task ID belongs to another account");
-    return json({ task: task(saved) }, 201);
+      input.sortOrder, now, tenantLimits.tasks,
+    ).first<TaskRow>());
+    if (saved) return json({ task: task(saved) }, 201);
+    const existing = await findTask(env.DB, id, tenantId);
+    if (existing) return json({ task: task(existing) });
+    throw await createConflict(env.DB, tenantId, "tasks");
   }
   const taskMatch = /^\/v1\/tasks\/([a-f0-9-]{36})$/.exec(path);
   if (taskMatch) {
@@ -318,10 +333,7 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
     if (method === "PATCH") {
       const input = TaskPatch.parse(await body(req));
       if (!Object.keys(input).length) throw new HttpError(400, "No changes supplied");
-      const existing = ensureTask(await findTask(env.DB, id, tenantId));
-      ensureStartTime(input.startDate === undefined ? existing.start_date : input.startDate,
-        input.startTime === undefined ? existing.start_time : input.startTime);
-      if (input.projectId !== undefined) await checkProjectId(env.DB, input.projectId, tenantId);
+      if (input.startDate === null && input.startTime) ensureStartTime(null, input.startTime);
       const assignments: string[] = [];
       const values: Array<string | number | null> = [];
       const set = (column: string, value: string | number | null) => {
@@ -342,13 +354,14 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
         assignments.push("completed_at = NULL");
       }
       set("updated_at", now);
-      await env.DB.prepare(`UPDATE tasks SET ${assignments.join(", ")} WHERE id = ? AND tenant_id = ?`)
-        .bind(...values, id, tenantId).run();
-      return json({ task: task(ensureTask(await findTask(env.DB, id, tenantId))) });
+      const saved = await write(() => env.DB.prepare(`UPDATE tasks SET ${assignments.join(", ")}
+        WHERE id = ? AND tenant_id = ? RETURNING *`).bind(...values, id, tenantId).first<TaskRow>());
+      return json({ task: task(ensureTask(saved)) });
     }
     if (method === "DELETE") {
-      ensureTask(await findTask(env.DB, id, tenantId));
-      await env.DB.prepare("DELETE FROM tasks WHERE id = ? AND tenant_id = ?").bind(id, tenantId).run();
+      const deleted = await env.DB.prepare("DELETE FROM tasks WHERE id = ? AND tenant_id = ? RETURNING id")
+        .bind(id, tenantId).first<{ id: string }>();
+      if (!deleted) throw new HttpError(404, "Task not found");
       return json({ ok: true });
     }
   }
