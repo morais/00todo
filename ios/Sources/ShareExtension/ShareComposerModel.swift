@@ -36,6 +36,9 @@ private struct SuggestedShareTitle {
         title = content.title
         notes = content.notes
         if SharedSession.tenantId == nil { errorText = "Open \(AppBrand.name) and sign in with Apple first." }
+        // A URL alone gives the model no page content to summarize. Keep the
+        // immediately useful fallback instead of inviting a bare-link title.
+        guard content.hasDescriptiveContext else { return }
         let model = SystemLanguageModel.default
         guard case .available = model.availability, model.supportsLocale() else { return }
         suggesting = true
@@ -49,8 +52,9 @@ private struct SuggestedShareTitle {
                 )
                 let response = try await session.respond(to: content.modelPrompt, generating: SuggestedShareTitle.self)
                 guard !Task.isCancelled, title == fallbackTitle else { return }
-                let suggested = ShareTaskContent.cleanTitle(response.content.title)
-                if !suggested.isEmpty { title = String(suggested.prefix(240)) }
+                if let suggested = ShareTaskContent.suggestedTitle(response.content.title) {
+                    title = suggested
+                }
             } catch {
                 // Keep the immediately available deterministic title.
             }
