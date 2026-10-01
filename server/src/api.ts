@@ -14,6 +14,7 @@ export interface Env {
   APPLE_KEY_ID?: string;
   APPLE_PRIVATE_KEY?: string;
   OAUTH_SIGNING_SECRET?: string;
+  MCP_VERIFIED_CLIENTS?: string;
   SOURCE_LIMITER?: RateLimit;
   SIGN_IN_LIMITER?: RateLimit;
   TENANT_LIMITER?: RateLimit;

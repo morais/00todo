@@ -131,6 +131,29 @@ export async function registerClient(req: Request, env: Env): Promise<Response> 
   }, 201);
 }
 
+/// Returns the server-owned display name for an exact, verified HTTPS
+/// callback. Dynamic registration metadata is self-asserted; neither
+/// `client_name` nor a lookalike or prefix URL can earn this result.
+///
+/// Invalid configuration fails closed to "unverified" so a typo can never
+/// confer trust. The registry is read at consent and token exchange rather
+/// than baked into the signed client id, so removing an entry takes effect
+/// immediately.
+export function verifiedClientName(env: Env, redirectUri: string): string | undefined {
+  const raw = env.MCP_VERIFIED_CLIENTS?.trim();
+  if (!raw) return undefined;
+  let registry: unknown;
+  try { registry = JSON.parse(raw); } catch { return undefined; }
+  if (!registry || typeof registry !== "object" || Array.isArray(registry)) return undefined;
+  let redirect: URL;
+  try { redirect = new URL(redirectUri); } catch { return undefined; }
+  if (redirect.protocol !== "https:" || redirect.hash || redirect.username || redirect.password) return undefined;
+  const name = (registry as Record<string, unknown>)[redirectUri];
+  if (typeof name !== "string") return undefined;
+  const canonical = name.trim();
+  return canonical ? canonical.slice(0, 120) : undefined;
+}
+
 function requestedScopes(raw: string | null): Scope[] | null {
   if (!raw) return [...scopes];
   const values = [...new Set(raw.split(/\s+/).filter(Boolean))];
@@ -144,7 +167,7 @@ function htmlEscape(value: string): string {
 }
 
 function html(body: string, status = 200): Response {
-  return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>00Todo · Connect</title><style>body{font:16px system-ui;max-width:620px;margin:8vh auto;padding:0 24px;line-height:1.5}button{font:inherit;padding:12px 20px;margin:8px 8px 0 0;border-radius:12px}code{overflow-wrap:anywhere}main{border:1px solid #ddd;border-radius:18px;padding:28px}</style><main>${body}</main></html>`, {
+  return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>00Todo · Connect</title><style>body{font:16px system-ui;max-width:620px;margin:8vh auto;padding:0 24px;line-height:1.5}button{font:inherit;padding:12px 20px;margin:8px 8px 0 0;border-radius:12px}code{overflow-wrap:anywhere}main{border:1px solid #ddd;border-radius:18px;padding:28px}.status{display:inline-block;font-size:13px;font-weight:600;padding:2px 10px;border-radius:999px;margin-right:6px}.good{background:#dff5e6;color:#14532d}.warning{background:#fdecc8;color:#7a4b00}.detail{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:12px;background:#f4f4f6}.detail span{font-size:13px;color:#555}.detail code{font-size:15px;font-weight:600}</style><main>${body}</main></html>`, {
     status, headers: {
       "content-type": "text/html; charset=utf-8", "cache-control": "no-store",
       "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https: http://localhost:* http://127.0.0.1:*; base-uri 'none'; frame-ancestors 'none'",
@@ -255,9 +278,15 @@ export async function showConsent(req: Request, env: Env): Promise<Response> {
   const authorized = await authorizedConsent(req, env, flowId);
   if (!authorized) return html("<h1>Connection expired</h1><p>Start again in your MCP client.</p>", 401);
   const { flow, secret } = authorized;
-  return html(`<h1>Connect ${htmlEscape(flow.client_name)} to 00Todo?</h1>
+  const verifiedName = verifiedClientName(env, flow.redirect_uri);
+  const clientName = verifiedName ?? flow.client_name;
+  const trust = verifiedName
+    ? `<p><span class="status good">Verified client</span> 00Todo recognizes this exact callback address.</p>`
+    : `<p><span class="status warning">Unverified client</span> This name was supplied by the client. Check the callback address before approving.</p>`;
+  return html(`<h1>Connect ${htmlEscape(clientName)} to 00Todo?</h1>
+    ${trust}
     <p>This client can ${flow.scopes.includes("todo:write") ? "read and change" : "read"} your tasks and projects.</p>
-    <p>After approval, you'll return to <code>${htmlEscape(flow.redirect_uri)}</code>.</p>
+    <p class="detail"><span>Redirects to</span><code>${htmlEscape(flow.redirect_uri)}</code></p>
     <form method="post" action="/oauth/consent">
       <input type="hidden" name="flow" value="${htmlEscape(flowId)}">
       <input type="hidden" name="csrf" value="${htmlEscape(secret)}">
@@ -328,7 +357,10 @@ export async function exchangeCode(req: Request, env: Env): Promise<Response> {
   ).run();
   if (claimed.meta.changes !== 1) return oauthError("invalid_grant", "Authorization code already used");
   const granted = code.scopes.split(" ").filter((scope): scope is Scope => scopes.includes(scope as Scope));
-  const credential = await issueCredential(env, code.tenant_id, "mcp", `MCP · ${client.name}`, granted);
+  // A verified callback gets the server-owned name; the self-asserted
+  // registration name is used only for unverified clients.
+  const label = verifiedClientName(env, code.redirect_uri) ?? client.name;
+  const credential = await issueCredential(env, code.tenant_id, "mcp", `MCP · ${label}`, granted);
   return Response.json({
     access_token: credential.token, token_type: "Bearer",
     expires_in: Math.max(1, Math.floor((Date.parse(credential.expiresAt) - Date.now()) / 1000)),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { beginAuthorization, registerClient, authorizationServerMetadata, protectedResourceMetadata } from "../src/oauth";
+import { beginAuthorization, registerClient, authorizationServerMetadata, protectedResourceMetadata, verifiedClientName } from "../src/oauth";
 import type { Env } from "../src/api";
 
 const origin = "https://api.00todo.com";
@@ -98,5 +98,23 @@ describe("MCP OAuth discovery and registration", () => {
     expect(inserts[0]).toContain("todo:read");
     url.searchParams.set("resource", `${origin}/v1`);
     expect((await beginAuthorization(new Request(url), env)).status).toBe(400);
+  });
+});
+
+describe("verified MCP clients", () => {
+  const registry = JSON.stringify({ "https://claude.ai/api/mcp/auth_callback": "Claude" });
+  const withRegistry = (value?: string) => ({ PUBLIC_ORIGIN: "https://api.example.com", MCP_VERIFIED_CLIENTS: value }) as unknown as Env;
+
+  it("names only exact registered HTTPS callbacks", () => {
+    const env = withRegistry(registry);
+    expect(verifiedClientName(env, "https://claude.ai/api/mcp/auth_callback")).toBe("Claude");
+    expect(verifiedClientName(env, "https://claude.ai/api/mcp/auth_callback/extra")).toBeUndefined();
+    expect(verifiedClientName(env, "https://evil.example/claude")).toBeUndefined();
+  });
+
+  it("fails closed on missing or malformed configuration", () => {
+    expect(verifiedClientName(withRegistry(), "https://claude.ai/api/mcp/auth_callback")).toBeUndefined();
+    expect(verifiedClientName(withRegistry("{not json"), "https://claude.ai/api/mcp/auth_callback")).toBeUndefined();
+    expect(verifiedClientName(withRegistry("[]"), "https://claude.ai/api/mcp/auth_callback")).toBeUndefined();
   });
 });
