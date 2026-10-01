@@ -377,7 +377,7 @@ struct TaskRow: View {
                     .foregroundStyle(task.completedAt == nil ? Color.secondary : Color.green)
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel(task.completedAt == nil ? "Complete \(task.title)" : "Reopen \(task.title)")
+            .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(task.title)
                     .foregroundStyle(task.completedAt == nil ? .primary : .secondary)
@@ -400,5 +400,6 @@ struct TaskRow: View {
             }
         }
         .padding(.vertical, 3)
+        .modifier(CompletableRow(isCompleted: task.completedAt != nil, onToggle: onToggle))
     }
 }

@@ -45,12 +45,13 @@ struct ProjectRow: View {
                     .foregroundStyle(project.completedAt == nil ? Color.secondary : Color.green)
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel(project.completedAt == nil ? "Complete \(project.name)" : "Reopen \(project.name)")
+            .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Image(systemName: "folder")
                         .font(.caption)
                         .foregroundStyle(.tint)
+                        .accessibilityLabel("Project")
                     Text(project.name)
                         .strikethrough(project.completedAt != nil)
                         .foregroundStyle(project.completedAt == nil ? .primary : .secondary)
@@ -70,6 +71,7 @@ struct ProjectRow: View {
             }
         }
         .padding(.vertical, 3)
+        .modifier(CompletableRow(isCompleted: project.completedAt != nil, onToggle: onToggle))
     }
 }
 
