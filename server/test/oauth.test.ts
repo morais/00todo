@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { beginAuthorization, registerClient, authorizationServerMetadata, protectedResourceMetadata, verifiedClientName, reviewCallback, showReviewLogin } from "../src/oauth";
+import { beginAuthorization, registerClient, authorizationServerMetadata, protectedResourceMetadata, verifiedClientName, reviewCallback, showReviewLogin, decideConsent } from "../src/oauth";
 import { sha256Hex } from "../src/auth";
 import type { Env } from "../src/api";
 
@@ -130,7 +130,7 @@ describe("service name", () => {
 });
 
 describe("dedicated MCP reviewer sign-in", () => {
-  async function reviewFlow() {
+  async function reviewFlow(state?: string) {
     const tenantId = "dedicated-review-tenant";
     const code = "tt_review_" + "A".repeat(43);
     let flow: Record<string, unknown> | null = null;
@@ -151,6 +151,11 @@ describe("dedicated MCP reviewer sign-in", () => {
                   flow.tenant_id = args[0]; flow.consent_hash = args[1];
                   return { meta: { changes: 1 } };
                 }
+                if (sql.includes("DELETE FROM oauth_flows") && flow && flow.id_hash === args[0]) {
+                  flow = null;
+                  return { meta: { changes: 1 } };
+                }
+                if (sql.includes("INSERT INTO oauth_codes")) return { meta: { changes: 1 } };
                 return { meta: { changes: 0 } };
               },
               async first() {
@@ -170,7 +175,8 @@ describe("dedicated MCP reviewer sign-in", () => {
     const { client_id } = await registered.json() as { client_id: string };
     const url = new URL(`${origin}/oauth/authorize`);
     url.search = new URLSearchParams({ client_id, response_type: "code", redirect_uri: "https://chatgpt.com/callback",
-      code_challenge_method: "S256", code_challenge: "A".repeat(43), resource: `${origin}/mcp` }).toString();
+      code_challenge_method: "S256", code_challenge: "A".repeat(43), resource: `${origin}/mcp`,
+      ...(state === undefined ? {} : { state }) }).toString();
     const response = await beginAuthorization(new Request(url), env);
     const page = await response.text();
     const flowId = page.match(/name="flow" value="([^"]+)"/)?.[1];
@@ -182,7 +188,7 @@ describe("dedicated MCP reviewer sign-in", () => {
     const { env, flowId, response, page } = await reviewFlow();
     expect(response.status).toBe(200);
     expect(page).toContain("Reviewer access");
-    expect(page).toContain("Continue with Apple");
+    expect(page).toContain('class="apple-button">Sign in with Apple</button>');
     const apple = await showReviewLogin(new Request(`${origin}/oauth/login?flow=${flowId}`), env);
     expect(apple.status).toBe(302);
     expect(new URL(apple.headers.get("location")!).hostname).toBe("appleid.apple.com");
@@ -201,5 +207,25 @@ describe("dedicated MCP reviewer sign-in", () => {
     expect(accepted.headers.get("location")).toContain(`/oauth/consent?flow=${flowId}`);
     expect(accepted.headers.get("set-cookie")).toContain("HttpOnly; Secure");
     expect((await reviewCallback(request(code, origin), env)).status).toBe(401);
+  });
+
+  it("returns a long opaque client state unchanged in the authorization callback", async () => {
+    const state = "opaque-state:" + "x".repeat(1000) + "+/%=";
+    const { env, code, flowId } = await reviewFlow(state);
+    const accepted = await reviewCallback(new Request(`${origin}/auth/review/callback`, {
+      method: "POST", headers: { origin, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ flow: flowId, accessCode: code }),
+    }), env);
+    expect(accepted.status).toBe(303);
+    const cookie = accepted.headers.get("set-cookie")!.split(";")[0];
+    const secret = cookie.split(".")[1];
+    const callback = await decideConsent(new Request(`${origin}/oauth/consent`, {
+      method: "POST", headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ flow: flowId, csrf: secret, decision: "approve" }),
+    }), env);
+    expect(callback.status).toBe(303);
+    const callbackURL = new URL(callback.headers.get("location")!);
+    expect(callbackURL.searchParams.get("state")).toBe(state);
+    expect(callbackURL.searchParams.get("iss")).toBe(origin);
   });
 });

@@ -172,7 +172,18 @@ function htmlEscape(value: string): string {
 }
 
 function html(env: Env, body: string, status = 200): Response {
-  return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${htmlEscape(appName(env))} · Connect</title><style>body{font:16px system-ui;max-width:620px;margin:8vh auto;padding:0 24px;line-height:1.5}button{font:inherit;padding:12px 20px;margin:8px 8px 0 0;border-radius:12px}code{overflow-wrap:anywhere}main{border:1px solid #ddd;border-radius:18px;padding:28px}.status{display:inline-block;font-size:13px;font-weight:600;padding:2px 10px;border-radius:999px;margin-right:6px}.good{background:#dff5e6;color:#14532d}.warning{background:#fdecc8;color:#7a4b00}.detail{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:12px;background:#f4f4f6}.detail span{font-size:13px;color:#555}.detail code{font-size:15px;font-weight:600}</style><main>${body}</main></html>`, {
+  return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${htmlEscape(appName(env))} · Connect</title><style>
+    :root{color-scheme:light dark;--bg:#f8fbff;--fg:#06152a;--muted:#56657a;--line:#e2e7ee;--card:#fff;--detail:#eef2f7}
+    @media(prefers-color-scheme:dark){:root{--bg:#06152a;--fg:#f8fbff;--muted:#98a8c0;--line:#1a2b48;--card:#0b1e38;--detail:#0c2340}}
+    *{box-sizing:border-box}body{font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--fg);max-width:620px;margin:0 auto;padding:24px;line-height:1.5}
+    header{font-size:22px;font-weight:800;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:32px}
+    main{border:1px solid var(--line);border-radius:18px;padding:28px;background:var(--card)}h1{font-size:23px;margin:0 0 12px}p{margin:12px 0;color:var(--muted)}
+    button{font:inherit;font-weight:600;padding:10px 18px;margin:12px 8px 0 0;border:0;border-radius:6px;cursor:pointer;background:#0968e8;color:#fff}
+    .apple-button{display:block;width:100%;margin:16px 0 0;background:var(--fg);color:var(--bg);text-align:center}
+    details{margin-top:24px;color:var(--muted)}details summary{cursor:pointer}details input{font:inherit;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);max-width:100%}
+    code{overflow-wrap:anywhere}.status{display:inline-block;font-size:13px;font-weight:600;padding:2px 10px;border-radius:999px;margin-right:6px}.good{background:#dff5e6;color:#14532d}.warning{background:#fdecc8;color:#7a4b00}
+    .detail{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:12px;background:var(--detail)}.detail span{font-size:13px;color:var(--muted)}.detail code{font-size:15px;font-weight:600}
+  </style><header>${htmlEscape(appName(env))}</header><main>${body}</main></html>`, {
     status, headers: {
       "content-type": "text/html; charset=utf-8", "cache-control": "no-store",
       "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https: http://localhost:* http://127.0.0.1:*; base-uri 'none'; frame-ancestors 'none'",
@@ -216,15 +227,17 @@ export async function beginAuthorization(req: Request, env: Env): Promise<Respon
      resource, scopes, apple_nonce, created_at, expires_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     await sha256Hex(flowId), clientId, client.name, redirectUri, challenge,
-    q.get("state")?.slice(0, 512) ?? null, audience(env, "mcp"), requested.join(" "),
+    // OAuth state is opaque client data: changing even one byte makes the
+    // client reject the callback before it can reach our token endpoint.
+    q.get("state"), audience(env, "mcp"), requested.join(" "),
     nonce, now.toISOString(), new Date(now.getTime() + flowLifetimeMs).toISOString(),
   ).run();
   if (reviewTenantIds(env).size) {
-    return html(env, `<h1>Sign in to ${htmlEscape(appName(env))}</h1>
-      <p>Use your Apple account to connect ${htmlEscape(client.name)}.</p>
+    return html(env, `<h1>Sign in</h1>
+      <p>Choose the account you use with ${htmlEscape(appName(env))} to connect ${htmlEscape(client.name)}.</p>
       <form method="get" action="/oauth/login">
         <input type="hidden" name="flow" value="${htmlEscape(flowId)}">
-        <button>Continue with Apple</button>
+        <button class="apple-button">Sign in with Apple</button>
       </form>
       <details><summary>Reviewer access</summary>
         <p>For the dedicated review account only. Enter the access code supplied in the secure reviewer instructions.</p>
