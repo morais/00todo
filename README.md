@@ -18,3 +18,8 @@ See [server/README.md](server/README.md) for Worker setup, [ios/README.md](ios/R
 Three app-only promotional screenshots for iPhone and iPad can be recaptured with `marketing/screenshots/capture-ios.sh`. The screenshot-only simulator fixture uses the same sample catalog as Settings → Screenshots without signing in or changing account data. See [the screenshot pipeline](artifacts/screenshots/README.md) for raw captures, compositions, and verification manifests.
 
 Dates are calendar days (`YYYY-MM-DD`), not timestamps. Optional start times are local wall-clock values (`HH:mm`). The iOS app compares with the device's local clock. API/MCP callers can pass `today=YYYY-MM-DD` and `time=HH:mm`, or the Worker uses `DEFAULT_TIME_ZONE`.
+
+## License
+
+Source code is MIT licensed. The 00Todo name and brand assets are excluded;
+see [LICENSE](./LICENSE) and [docs/brand/LICENSE](./docs/brand/LICENSE).
