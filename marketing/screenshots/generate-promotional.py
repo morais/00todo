@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "artifacts/screenshots/raw"
 PROMOTIONAL = ROOT / "artifacts/screenshots/promotional"
 FONT = "/System/Library/Fonts/SFNS.ttf"
-SIZES = {"iphone-6.3": (1206, 2622), "ipad": (2064, 2752)}
+SIZES = {"iphone-6.3": (1206, 2622), "iphone-6.9": (1320, 2868), "ipad": (2064, 2752)}
 SCREENS = (
     ("01-available.png", "Only what's ready.", "Tasks from every project, all in one place."),
     ("02-upcoming.png", "Future work, on time.", "Start dates keep later tasks out of today's way."),
@@ -86,10 +86,13 @@ def device_frame(canvas: Image.Image, source: Image.Image, device_set: str) -> N
     corner = round(60 * scale) if ipad else round(screen_width * 0.074)
 
     # Simulator screenshots omit the physical iPhone Island; 00Widget's
-    # compositor restores it at its native 6.3-inch framebuffer coordinates.
+    # compositor restores it relative to the captured framebuffer size.
     screen = source.convert("RGBA")
     if not ipad:
-        ImageDraw.Draw(screen).rounded_rectangle((414, 42, 792, 153), radius=56, fill=(0, 0, 0))
+        island = tuple(round(value * source.width / 1206) for value in (414, 42, 792, 153))
+        ImageDraw.Draw(screen).rounded_rectangle(
+            island, radius=round(56 * source.width / 1206), fill=(0, 0, 0)
+        )
     screen = rounded(screen.resize((screen_width, screen_height), Image.Resampling.LANCZOS), corner)
 
     shadow = Image.new("RGBA", canvas.size)
@@ -136,9 +139,11 @@ def compose(source: Path, device_set: str, headline: str, supporting: str, outpu
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--set", choices=("all", "iphone", "ipad"), default="all")
+    parser.add_argument("--set", choices=("all", "iphone", "iphone-6.9", "ipad"), default="all")
     args = parser.parse_args()
-    sets = ("iphone-6.3", "ipad") if args.set == "all" else (("iphone-6.3",) if args.set == "iphone" else ("ipad",))
+    sets = ("iphone-6.3", "iphone-6.9", "ipad") if args.set == "all" else (
+        ("iphone-6.3",) if args.set == "iphone" else (args.set,)
+    )
     for device_set in sets:
         sources = verified_sources(device_set)
         output_dir = PROMOTIONAL / device_set

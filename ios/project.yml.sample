@@ -21,6 +21,7 @@ targets:
           - Widgets/**
           - ShareExtension/**
       - path: Resources/App/Assets.xcassets
+      - path: Resources/App/PrivacyInfo.xcprivacy
     info:
       path: Resources/App/Info.plist
       properties:
@@ -104,6 +105,7 @@ targets:
       - path: Sources/ShareTaskContent.swift
       - path: Sources/SharedSession.swift
       - path: Sources/SharedTaskInbox.swift
+      - path: Resources/Share/PrivacyInfo.xcprivacy
     info:
       path: Resources/Share/Info.plist
       properties:

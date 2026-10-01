@@ -8,8 +8,8 @@ IOS="$ROOT/ios"
 DERIVED="$IOS/build/ScreenshotDerivedData"
 RAW="$ROOT/artifacts/screenshots/raw"
 MODE="${1:-all}"
-if [[ "$MODE" != all && "$MODE" != iphone && "$MODE" != ipad ]]; then
-  echo "usage: $0 [all|iphone|ipad]" >&2
+if [[ "$MODE" != all && "$MODE" != iphone && "$MODE" != iphone-6.9 && "$MODE" != ipad ]]; then
+  echo "usage: $0 [all|iphone|iphone-6.9|ipad]" >&2
   exit 2
 fi
 
@@ -111,6 +111,9 @@ PY
 
 if [[ "$MODE" == all || "$MODE" == iphone ]]; then
   capture iphone-6.3 'iPhone 17 Pro' 1206 2622
+fi
+if [[ "$MODE" == all || "$MODE" == iphone-6.9 ]]; then
+  capture iphone-6.9 'iPhone 17 Pro Max' 1320 2868
 fi
 if [[ "$MODE" == all || "$MODE" == ipad ]]; then
   capture ipad 'iPad Pro 13-inch (M4) iOS 27' 2064 2752
