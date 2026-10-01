@@ -11,20 +11,33 @@ export type AppleClaims = {
   email?: string; email_verified?: boolean | string;
 };
 
-let keyCache: { keys: AppleKey[]; expires: number } | null = null;
+let keyCache: { keys: AppleKey[]; expires: number; fetched: number } | null = null;
+const keyLifetimeMs = 3600000;
+// An unknown key id triggers at most one early refetch per minute, so Apple's
+// key rotation is picked up promptly without letting forged tokens with random
+// key ids turn every request into a fetch.
+const refetchIntervalMs = 60000;
 
 function decodeJson<T>(encoded: string): T {
   return JSON.parse(new TextDecoder().decode(decodeBase64url(encoded))) as T;
 }
 
-async function appleKeys(): Promise<AppleKey[]> {
-  if (keyCache && keyCache.expires > Date.now()) return keyCache.keys;
+async function appleKeys(forceRefresh = false): Promise<AppleKey[]> {
+  const now = Date.now();
+  if (keyCache && keyCache.expires > now && !forceRefresh) return keyCache.keys;
   const response = await fetch(keysURL);
   if (!response.ok) throw new Error("Apple signing keys unavailable");
   const data = await response.json() as { keys?: AppleKey[] };
   if (!Array.isArray(data.keys) || !data.keys.length) throw new Error("Apple returned no signing keys");
-  keyCache = { keys: data.keys, expires: Date.now() + 3600000 };
+  keyCache = { keys: data.keys, expires: now + keyLifetimeMs, fetched: now };
   return data.keys;
+}
+
+async function appleKey(kid: string): Promise<AppleKey | undefined> {
+  const find = (keys: AppleKey[]) => keys.find((key) => key.kid === kid && key.kty === "RSA");
+  const cached = find(await appleKeys());
+  if (cached || (keyCache && Date.now() - keyCache.fetched < refetchIntervalMs)) return cached;
+  return find(await appleKeys(true));
 }
 
 export function resetAppleKeysForTest(): void { keyCache = null; }
@@ -40,7 +53,7 @@ export async function verifyAppleIdToken(
   const [headerPart, payloadPart, signaturePart] = parts;
   const header = decodeJson<{ alg?: string; kid?: string }>(headerPart);
   if (header.alg !== "RS256" || !header.kid) throw new Error("Unsupported Apple signature");
-  const jwk = (await appleKeys()).find((key) => key.kid === header.kid && key.kty === "RSA");
+  const jwk = await appleKey(header.kid);
   if (!jwk) throw new Error("Unknown Apple signing key");
   const key = await crypto.subtle.importKey("jwk", { kty: "RSA", n: jwk.n, e: jwk.e, ext: true },
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
