@@ -28,6 +28,8 @@ The share-sheet extension accepts web links and plain text. It puts shared URLs 
 
 Settings → Screenshots can create a small set of sample tasks and projects across Available, Upcoming, and Completed for screenshots. The items are ordinary account data and sync like any other edits. Settings can remove all items created by this button, including any subsequent edits to those items; it does not remove other account data.
 
+For repeatable app-only promotional captures on iPhone and iPad, run `marketing/screenshots/capture-ios.sh` from the repository root. It uses an isolated simulator fixture based on that demo catalog, XCUITest, and a provenance-checked compositor; it does not touch the signed-in account. See [screenshot pipeline](../artifacts/screenshots/README.md).
+
 For a simulator compile without signing:
 
 ```sh

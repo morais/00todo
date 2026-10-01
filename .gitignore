@@ -23,3 +23,5 @@ ios/Resources/*/*.entitlements
 *.xcuserstate
 xcuserdata/
 *.xcresult/
+/artifacts/screenshots/*
+!/artifacts/screenshots/README.md

@@ -130,3 +130,35 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.zerozerotodo.share
         APPLICATION_EXTENSION_API_ONLY: YES
         TARGETED_DEVICE_FAMILY: "1,2"
+
+  ZeroZeroTodoScreenshots:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: ScreenshotUITests
+    dependencies:
+      - target: ZeroZeroTodo
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.zerozerotodo.screenshots
+        TEST_TARGET_NAME: ZeroZeroTodo
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  ZeroZeroTodo:
+    build:
+      targets:
+        ZeroZeroTodo: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+  ZeroZeroTodoScreenshots:
+    build:
+      targets:
+        ZeroZeroTodo: all
+        ZeroZeroTodoScreenshots: [test]
+    test:
+      config: Debug
+      targets:
+        - ZeroZeroTodoScreenshots

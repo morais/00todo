@@ -48,6 +48,7 @@ struct CreatedProject {
     private(set) var pendingChanges: [PendingMutation] = []
     private var syncing = false
     private var refreshAfterCurrent = false
+    private(set) var isScreenshotDemo = false
 
     private static let tokenService = "00todo.api-token"
 
@@ -57,6 +58,20 @@ struct CreatedProject {
         token = Self.readToken()
         accountEmail = UserDefaults.standard.string(forKey: "accountEmail")
         tenantId = UserDefaults.standard.string(forKey: "tenantId")
+        #if TODO_SCREENSHOTS
+        if ProcessInfo.processInfo.arguments.contains("--screenshot-demo") {
+            UserDefaults.standard.set(true, forKey: "showProjectTasksInLists")
+            let snapshot = DemoDataCatalog.screenshotSnapshot()
+            serverAddress = "https://screenshot-demo.invalid"
+            token = "screenshot-only"
+            accountEmail = "Screenshot demo"
+            tenantId = "screenshot-demo"
+            projects = snapshot.projects
+            tasks = snapshot.tasks
+            isScreenshotDemo = true
+            return
+        }
+        #endif
         if !token.isEmpty, tenantId != nil {
             loadCachedState()
             if let tenantId { try? SharedSession.publish(tenantId: tenantId, serverAddress: serverAddress, token: token) }
@@ -177,17 +192,17 @@ struct CreatedProject {
     }
 
     func syncBadge() async {
-        guard isConfigured else { return }
+        guard isConfigured, !isScreenshotDemo else { return }
         await AvailableBadge.sync(snapshot: widgetSnapshot, expandProjects: expandProjects)
     }
 
     func updateCurrentBadge(at now: Date = Date()) async {
-        guard isConfigured else { return }
+        guard isConfigured, !isScreenshotDemo else { return }
         await AvailableBadge.updateCurrent(snapshot: widgetSnapshot, expandProjects: expandProjects, at: now)
     }
 
     func refresh() async {
-        guard isConfigured else { return }
+        guard isConfigured, !isScreenshotDemo else { return }
         guard !refreshing else {
             refreshAfterCurrent = true
             return
@@ -222,7 +237,7 @@ struct CreatedProject {
     }
 
     func importSharedTasks() {
-        guard isConfigured, let tenantId else { return }
+        guard isConfigured, !isScreenshotDemo, let tenantId else { return }
         for item in SharedTaskInbox.pending(tenantId: tenantId, serverAddress: serverAddress) {
             if tasks.contains(where: { $0.id == item.id }) {
                 SharedTaskInbox.remove(item.id)
