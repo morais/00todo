@@ -10,7 +10,7 @@ xcodegen generate
 open ZeroZeroTodo.xcodeproj
 ```
 
-Before a device or TestFlight build, replace `PRODUCT_BUNDLE_IDENTIFIER` with the Apple App ID, set `DEVELOPMENT_TEAM`, and set `TodoServerBaseURL` to `https://api.00todo.com`. Set `TodoAppGroup` and the matching App Groups entitlements for both app and widget to an App Group registered and attached to both App IDs. The app App ID must also have Sign in with Apple enabled. Both provisioning profiles must carry their App Group entitlement. The `.sample` intentionally retains example values.
+Before a device or TestFlight build, replace `PRODUCT_BUNDLE_IDENTIFIER` with the Apple App ID, set `DEVELOPMENT_TEAM`, and set `TodoServerBaseURL` to `https://api.00todo.com`. Set `TodoAppGroup` and the matching App Groups entitlements for the app, widget, and share extension to an App Group registered and attached to all three App IDs. The app App ID must also have Sign in with Apple enabled. All three provisioning profiles must carry their App Group entitlement. The `.sample` intentionally retains example values.
 
 The App Store icon, in-app mark, and light/dark wordmarks come from the 00Widget sibling identity. The chart-shaped mouth is replaced with three checked tasks. Run `python3 docs/brand/generate.py` from the repository root to regenerate the committed assets; see [brand guidance](../docs/brand/README.md). The user-visible app name is `00Todo`; the lower-case bundle ID and API hostname are stable technical identifiers.
 
@@ -23,6 +23,10 @@ The 00Todo Available Home Screen widget supports Small, Medium, Large, and iPad 
 Quick Add treats a single action as a task. Explicit projects and lists, or requests with multiple distinct subtasks, become projects. A model-generated project with only one subtask collapses to a task, using the subtask's title when distinct, unless the user explicitly asked for a project.
 
 Existing task editors use the navigation Back button without a second Cancel button. Task project pickers exclude completed projects, except when editing a task already assigned to one. At the bottom of Available or Upcoming, a deliberate upward pull opens New Task; Completed does not use this gesture.
+
+The share-sheet extension accepts web links and plain text. It puts shared URLs in the task description, suggests an editable task title with Apple's on-device Foundation Models when available for the device and locale, and otherwise uses a source-title/text fallback. It does not fetch or transmit content for title inference. Pressing Add first writes a task with a stable ID into an App Group inbox, then tries a brief direct API upload. If that cannot complete, the main app imports the task into its offline queue on its next launch or foreground activation. The extension uses the app's shared Keychain session; no token is written to the inbox or widget snapshot.
+
+Settings → Screenshots can create a small set of sample tasks and projects across Available, Upcoming, and Completed for screenshots. The items are ordinary account data and sync like any other edits. Settings can remove all items created by this button, including any subsequent edits to those items; it does not remove other account data.
 
 For a simulator compile without signing:
 

@@ -19,6 +19,7 @@ targets:
       - path: Sources
         excludes:
           - Widgets/**
+          - ShareExtension/**
       - path: Resources/App/Assets.xcassets
     info:
       path: Resources/App/Info.plist
@@ -66,6 +67,8 @@ targets:
     dependencies:
       - target: ZeroZeroTodoWidgets
         embed: true
+      - target: ZeroZeroTodoShare
+        embed: true
 
   ZeroZeroTodoWidgets:
     type: app-extension
@@ -92,3 +95,38 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.zerozerotodo.widgets
         APPLICATION_EXTENSION_API_ONLY: YES
         INFOPLIST_KEY_UIApplicationSupportsMultipleScenes: YES
+
+  ZeroZeroTodoShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Sources/ShareExtension
+      - path: Sources/ShareTaskContent.swift
+      - path: Sources/SharedSession.swift
+      - path: Sources/SharedTaskInbox.swift
+    info:
+      path: Resources/Share/Info.plist
+      properties:
+        CFBundleDisplayName: 00Todo
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        TodoAppGroup: group.com.example.zerozerotodo
+        TodoServerBaseURL: https://api.example.com
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsWebPageWithMaxCount: 1
+    entitlements:
+      path: Resources/Share/ZeroZeroTodoShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.example.zerozerotodo
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.zerozerotodo.share
+        APPLICATION_EXTENSION_API_ONLY: YES
+        TARGETED_DEVICE_FAMILY: "1,2"

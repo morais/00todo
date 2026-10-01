@@ -31,6 +31,11 @@ private struct AppleLoginResponse: Decodable {
     struct Account: Decodable { var id: String; var email: String? }
 }
 
+struct CreatedProject {
+    let id: String
+    let taskIDs: [String]
+}
+
 @MainActor @Observable final class TodoStore {
     var projects: [TodoProject] = []
     var tasks: [TodoTask] = []
@@ -54,6 +59,7 @@ private struct AppleLoginResponse: Decodable {
         tenantId = UserDefaults.standard.string(forKey: "tenantId")
         if !token.isEmpty, tenantId != nil {
             loadCachedState()
+            if let tenantId { try? SharedSession.publish(tenantId: tenantId, serverAddress: serverAddress, token: token) }
         } else if token.isEmpty || tenantId == nil {
             WidgetSnapshotStore.clear()
             WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
@@ -106,11 +112,13 @@ private struct AppleLoginResponse: Decodable {
             WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
             await AvailableBadge.clear()
         }
+        SharedSession.clear()
         token = login.token
         accountEmail = login.tenant.email
         tenantId = login.tenant.id
         UserDefaults.standard.set(login.tenant.email, forKey: "accountEmail")
         UserDefaults.standard.set(login.tenant.id, forKey: "tenantId")
+        try? SharedSession.publish(tenantId: login.tenant.id, serverAddress: serverAddress, token: login.token)
         loadCachedState()
         await refresh()
     }
@@ -128,7 +136,10 @@ private struct AppleLoginResponse: Decodable {
         ])
         let deletedTenant = tenantId
         clearLocalSession()
-        if let deletedTenant { try? FileManager.default.removeItem(at: Self.stateURL(for: deletedTenant)) }
+        if let deletedTenant {
+            try? FileManager.default.removeItem(at: Self.stateURL(for: deletedTenant))
+            clearDemoData(for: deletedTenant)
+        }
     }
 
     private func clearLocalSession() {
@@ -140,6 +151,7 @@ private struct AppleLoginResponse: Decodable {
         pendingChanges = []
         message = nil
         Self.deleteToken()
+        SharedSession.clear()
         UserDefaults.standard.removeObject(forKey: "accountEmail")
         UserDefaults.standard.removeObject(forKey: "tenantId")
         try? FileManager.default.removeItem(at: Self.cacheURL)
@@ -209,7 +221,29 @@ private struct AppleLoginResponse: Decodable {
         }
     }
 
-    func createTask(_ draft: TaskDraft) async throws {
+    func importSharedTasks() {
+        guard isConfigured, let tenantId else { return }
+        for item in SharedTaskInbox.pending(tenantId: tenantId, serverAddress: serverAddress) {
+            if tasks.contains(where: { $0.id == item.id }) {
+                SharedTaskInbox.remove(item.id)
+                continue
+            }
+            do {
+                let mutation = try PendingMutation(method: "POST", path: "/v1/tasks", body: [
+                    "id": item.id, "title": item.title, "notes": item.notes
+                ])
+                try record(mutation) {
+                    tasks.append(TodoTask(id: item.id, title: item.title, notes: item.notes,
+                                          projectId: nil, startDate: nil, startTime: nil, dueDate: nil,
+                                          completedAt: nil, sortOrder: 0, createdAt: item.createdAt,
+                                          updatedAt: item.createdAt))
+                }
+                SharedTaskInbox.remove(item.id)
+            } catch { message = "Couldn't import a shared task: \(error.localizedDescription)" }
+        }
+    }
+
+    @discardableResult func createTask(_ draft: TaskDraft) async throws -> String {
         let id = UUID().uuidString.lowercased()
         let now = Self.timestamp()
         var body = draft.payload
@@ -223,6 +257,7 @@ private struct AppleLoginResponse: Decodable {
                                   dueDate: draft.hasDue ? TodoDates.string(from: draft.due) : nil,
                                   completedAt: nil, sortOrder: 0, createdAt: now, updatedAt: now))
         }
+        return id
     }
 
     func updateTask(_ id: String, draft: TaskDraft) async throws {
@@ -255,11 +290,11 @@ private struct AppleLoginResponse: Decodable {
         try record(change) { tasks.removeAll { $0.id == id } }
     }
 
-    func createProject(_ draft: ProjectDraft) async throws {
+    @discardableResult func createProject(_ draft: ProjectDraft) async throws -> CreatedProject {
         try await createProject(draft, subtasks: [])
     }
 
-    func createProject(_ draft: ProjectDraft, subtasks: [String]) async throws {
+    @discardableResult func createProject(_ draft: ProjectDraft, subtasks: [String]) async throws -> CreatedProject {
         let projectId = UUID().uuidString.lowercased()
         let now = Self.timestamp()
         var projectBody = draft.payload
@@ -283,6 +318,7 @@ private struct AppleLoginResponse: Decodable {
                                       completedAt: nil, sortOrder: index, createdAt: now, updatedAt: now))
             }
         }
+        return CreatedProject(id: projectId, taskIDs: childIDs)
     }
 
     func updateProject(_ id: String, draft: ProjectDraft) async throws {

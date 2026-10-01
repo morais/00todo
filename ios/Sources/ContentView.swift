@@ -42,9 +42,15 @@ struct ContentView: View {
                 SignInView()
             }
         }
-        .task { await store.refresh() }
+        .task {
+            store.importSharedTasks()
+            await store.refresh()
+        }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await store.refresh() } }
+            if phase == .active {
+                store.importSharedTasks()
+                Task { await store.refresh() }
+            }
         }
         .onOpenURL { url in
             if let launch = QuickAddLaunch(url: url) {
@@ -276,6 +282,7 @@ struct TasksView: View {
             }
             .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) {
                 now = $0
+                store.importSharedTasks()
                 Task { await store.updateCurrentBadge(at: now) }
                 if store.hasPendingChanges { Task { await store.refresh() } }
             }
