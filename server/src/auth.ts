@@ -17,6 +17,7 @@ type CredentialRow = {
   scopes: string;
   expires_at: string;
   revoked_at: string | null;
+  last_used_at: string | null;
 };
 type TenantRow = { id: string; apple_subject: string | null; email: string | null };
 
@@ -64,6 +65,13 @@ export function audience(env: Env, kind: CredentialKind): string {
   return publicOrigin(env) + (kind === "app" ? "/v1" : "/mcp");
 }
 
+const lastUsedResolutionMs = 3600000;
+
+export function lastUseIsStale(lastUsedAt: string | null, now = Date.now()): boolean {
+  const previous = lastUsedAt ? Date.parse(lastUsedAt) : NaN;
+  return !Number.isFinite(previous) || now - previous >= lastUsedResolutionMs;
+}
+
 export async function authenticate(req: Request, env: Env, kind: CredentialKind): Promise<Principal | null> {
   const raw = req.headers.get("authorization")?.match(/^Bearer (tt_(?:app|mcp)_[A-Za-z0-9_-]{43})$/i)?.[1];
   if (!raw || !raw.startsWith(`tt_${kind}_`)) return null;
@@ -72,7 +80,9 @@ export async function authenticate(req: Request, env: Env, kind: CredentialKind)
     .bind(hash).first<CredentialRow>();
   if (!row || row.kind !== kind || row.audience !== audience(env, kind) || row.revoked_at || row.expires_at <= new Date().toISOString()) return null;
   const scopes = row.scopes.split(" ").filter((value): value is Scope => value === "todo:read" || value === "todo:write");
-  if (kind === "mcp") {
+  // Agents make many calls in a row; recording each one would be a D1 write
+  // per request. An hourly resolution is plenty for the connections screen.
+  if (kind === "mcp" && lastUseIsStale(row.last_used_at)) {
     await env.DB.prepare("UPDATE credentials SET last_used_at = ? WHERE token_hash = ? AND tenant_id = ?")
       .bind(new Date().toISOString(), hash, row.tenant_id).run();
   }

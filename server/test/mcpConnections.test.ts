@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { disconnectMcpConnection, listMcpConnections } from "../src/mcpConnections";
 import type { Env } from "../src/api";
-import type { Principal } from "../src/auth";
+import { lastUseIsStale, type Principal } from "../src/auth";
 
 type Grant = {
   id: string; tenant_id: string; kind: string; label: string; scopes: string;
@@ -72,5 +72,15 @@ describe("app-owned MCP connections", () => {
     const mcp: Principal = { ...principal, kind: "mcp" };
     expect((await listMcpConnections(env, mcp)).status).toBe(403);
     expect((await disconnectMcpConnection(env, mcp, grantId)).status).toBe(403);
+  });
+});
+
+describe("MCP last-used tracking", () => {
+  it("records use at most once an hour", () => {
+    const now = Date.parse("2026-10-01T12:00:00.000Z");
+    expect(lastUseIsStale(null, now)).toBe(true);
+    expect(lastUseIsStale("2026-10-01T11:30:00.000Z", now)).toBe(false);
+    expect(lastUseIsStale("2026-10-01T10:59:59.000Z", now)).toBe(true);
+    expect(lastUseIsStale("not a date", now)).toBe(true);
   });
 });
