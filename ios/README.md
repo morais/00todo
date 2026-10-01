@@ -10,7 +10,7 @@ xcodegen generate
 open ZeroZeroTodo.xcodeproj
 ```
 
-Before a device or TestFlight build, replace `PRODUCT_BUNDLE_IDENTIFIER` with the Apple App ID, set `DEVELOPMENT_TEAM`, and set `TodoServerBaseURL` to your Worker origin (`https://api.00todo.com` for the official app). Set `TodoAppGroup` and the matching App Groups entitlements for the app, widget, and share extension to an App Group registered and attached to all three App IDs. The app App ID must also have Sign in with Apple enabled. All three provisioning profiles must carry their App Group entitlement. The `.sample` intentionally retains example values.
+Before a device or TestFlight build, replace `PRODUCT_BUNDLE_IDENTIFIER` with the Apple App ID, set `DEVELOPMENT_TEAM`, and set `TodoServerBaseURL` to your Worker origin (`https://api.00todo.com` for the official app). Set `TodoAppGroup` and the matching App Groups entitlements for the app, widget, share, and action extensions to an App Group registered and attached to all four App IDs. The app App ID must also have Sign in with Apple enabled. All four provisioning profiles must carry their App Group entitlement. The `.sample` intentionally retains example values.
 
 The App Store icon, in-app mark, and light/dark wordmarks come from the 00Widget sibling identity. The chart-shaped mouth is replaced with three checked tasks. Run `python3 docs/brand/generate.py` from the repository root to regenerate the committed assets; see [brand guidance](../docs/brand/README.md). The user-visible app name is `00Todo`; the lower-case bundle ID and API hostname are stable technical identifiers.
 
@@ -18,7 +18,7 @@ The App Store icon, in-app mark, and light/dark wordmarks come from the 00Widget
 
 The 00Todo name and artwork are not MIT licensed (see `docs/brand/LICENSE`). A fork that ships its own app should:
 
-- Set `TodoAppName` and `CFBundleDisplayName` for all three targets in `project.yml`. The app, widget, and share extension read their user-visible name from `TodoAppName` through `AppBrand.name`.
+- Set `TodoAppName` and `CFBundleDisplayName` for all four targets in `project.yml`. The app, widget, share, and action extensions read their user-visible name from `TodoAppName` through `AppBrand.name`. Give the action extension an action-style `CFBundleDisplayName`, such as “Add to My Todo App.”
 - Set `TODO_URL_SCHEME` in `project.yml` to your own URL scheme. The app registers it and the widget builds its links from it through `AppBrand.urlScheme`; sharing 00Todo's scheme would let the two apps open each other's widget taps.
 - Replace the permission prompts and Home Screen quick action titles in `project.yml`, and the widget configuration title in `Sources/Widgets/QuickAddWidget.swift` (App Intents titles must be literals).
 - Replace `AppIcon`, `BrandMark`, and `BrandWordmark` in `Resources/App/Assets.xcassets`.
@@ -33,7 +33,7 @@ Quick Add treats a single action as a task. Explicit projects and lists, or requ
 
 Existing task editors use the navigation Back button without a second Cancel button. Task project pickers exclude completed projects, except when editing a task already assigned to one. At the bottom of Available or Upcoming, a deliberate upward pull opens New Task; Completed does not use this gesture.
 
-The share-sheet extension accepts web links and plain text. It puts shared URLs in the task description, suggests an editable task title with Apple's on-device Foundation Models when available for the device and locale, and otherwise uses a source-title/text fallback. It does not fetch or transmit content for title inference. Pressing Add first writes a task with a stable ID into an App Group inbox, then tries a brief direct API upload. If that cannot complete, the main app imports the task into its offline queue on its next launch or foreground activation. The extension uses the app's shared Keychain session; no token is written to the inbox or widget snapshot.
+The share-sheet offers both the `00Todo` app icon in the sharing row and an “Add to 00Todo” entry in the actions list. Both accept web links and plain text and open the same task composer. They put shared URLs in the task description, suggest an editable task title with Apple's on-device Foundation Models when available for the device and locale, and otherwise use a source-title/text fallback. Neither fetches or transmits content for title inference. Pressing Add first writes a task with a stable ID into an App Group inbox, then tries a brief direct API upload. If that cannot complete, the main app imports the task into its offline queue on its next launch or foreground activation. The extensions use the app's shared Keychain session; no token is written to the inbox or widget snapshot. iOS controls whether the action initially appears under More and how it is ordered.
 
 Before signing in, Try with demo data opens the app with a small set of sample tasks and projects across Available, Upcoming, and Completed. Demo changes stay in memory: nothing is saved, queued, sent to the server, or shown in widgets. A banner and Settings offer Sign in with Apple, which discards the demo data.
 
