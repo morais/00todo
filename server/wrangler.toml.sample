@@ -8,6 +8,9 @@ preview_urls = false
 # Start dates/times are compared in this time zone when an API caller omits
 # ?today=YYYY-MM-DD&time=HH:mm. iOS uses the device's local clock.
 DEFAULT_TIME_ZONE = "UTC"
+# Service name on the MCP consent page and in MCP server metadata. Unset
+# means the generic "Todo"; a fork should use its own name, not 00Todo.
+# APP_NAME = "My Todo"
 PUBLIC_ORIGIN = "https://api.example.com"
 # Native App ID (bundle ID) and web Services ID must be associated with the
 # same Sign in with Apple primary app in your Apple Developer account.

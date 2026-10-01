@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { routeApi, json, type Env } from "./api";
+import { appName, routeApi, json, type Env } from "./api";
 import { ProjectInput, ProjectPatch, TaskInput, TaskPatch } from "./model";
 import { type Principal } from "./auth";
 import { authChallenge } from "./oauth";
@@ -83,7 +83,7 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
     return rpcResult(requestId, {
       protocolVersion: typeof asked === "string" && protocolVersions.has(asked) ? asked : "2026-07-28",
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "00Todo", version: "1.0.0" },
+      serverInfo: { name: appName(env), version: "1.0.0" },
     });
   }
   if (request.method === "ping") return rpcResult(requestId, {});

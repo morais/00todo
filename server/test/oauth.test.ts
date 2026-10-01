@@ -118,3 +118,12 @@ describe("verified MCP clients", () => {
     expect(verifiedClientName(withRegistry("[]"), "https://claude.ai/api/mcp/auth_callback")).toBeUndefined();
   });
 });
+
+describe("service name", () => {
+  it("uses APP_NAME and falls back to a generic name", async () => {
+    const named = await protectedResourceMetadata({ PUBLIC_ORIGIN: origin, APP_NAME: "00Todo" } as unknown as Env).json() as { resource_name: string };
+    const generic = await protectedResourceMetadata({ PUBLIC_ORIGIN: origin } as unknown as Env).json() as { resource_name: string };
+    expect(named.resource_name).toBe("00Todo");
+    expect(generic.resource_name).toBe("Todo");
+  });
+});

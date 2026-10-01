@@ -15,6 +15,7 @@ export interface Env {
   APPLE_PRIVATE_KEY?: string;
   OAUTH_SIGNING_SECRET?: string;
   MCP_VERIFIED_CLIENTS?: string;
+  APP_NAME?: string;
   SOURCE_LIMITER?: RateLimit;
   SIGN_IN_LIMITER?: RateLimit;
   TENANT_LIMITER?: RateLimit;
@@ -42,6 +43,10 @@ const task = (row: TaskRow): Task => ({
   startDate: row.start_date, startTime: row.start_time, dueDate: row.due_date, completedAt: row.completed_at,
   sortOrder: row.sort_order, createdAt: row.created_at, updatedAt: row.updated_at,
 });
+
+/// The service name shown on the consent page and to MCP clients. Defaults
+/// to a generic name so a self-hosted fork never presents itself as 00Todo.
+export const appName = (env: Env): string => env.APP_NAME?.trim().slice(0, 60) || "Todo";
 
 export const json = (value: unknown, status = 200): Response => Response.json(value, {
   status,
@@ -143,7 +148,7 @@ export async function routeApi(req: Request, env: Env, principal: Principal): Pr
   } catch (cause) {
     if (cause instanceof HttpError) return error(cause.message, cause.status);
     if (cause instanceof ZodError) return json({ error: "Invalid input", issues: cause.issues }, 400);
-    console.error("00Todo API error", cause);
+    console.error("API error", cause);
     return error("Internal server error", 500);
   }
 }

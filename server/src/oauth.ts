@@ -4,7 +4,7 @@ import {
   issueCredential, publicOrigin, randomToken, sha256Base64url, sha256Hex,
   type Scope,
 } from "./auth";
-import { json, type Env } from "./api";
+import { appName, json, type Env } from "./api";
 
 const scopes: Scope[] = ["todo:read", "todo:write"];
 const flowLifetimeMs = 10 * 60000;
@@ -35,7 +35,7 @@ export function protectedResourceMetadata(env: Env): Response {
   const origin = publicOrigin(env);
   return metadata({
     resource: audience(env, "mcp"), authorization_servers: [origin],
-    scopes_supported: scopes, bearer_methods_supported: ["header"], resource_name: "00Todo",
+    scopes_supported: scopes, bearer_methods_supported: ["header"], resource_name: appName(env),
   });
 }
 
@@ -166,8 +166,8 @@ function htmlEscape(value: string): string {
   })[character]!);
 }
 
-function html(body: string, status = 200): Response {
-  return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>00Todo · Connect</title><style>body{font:16px system-ui;max-width:620px;margin:8vh auto;padding:0 24px;line-height:1.5}button{font:inherit;padding:12px 20px;margin:8px 8px 0 0;border-radius:12px}code{overflow-wrap:anywhere}main{border:1px solid #ddd;border-radius:18px;padding:28px}.status{display:inline-block;font-size:13px;font-weight:600;padding:2px 10px;border-radius:999px;margin-right:6px}.good{background:#dff5e6;color:#14532d}.warning{background:#fdecc8;color:#7a4b00}.detail{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:12px;background:#f4f4f6}.detail span{font-size:13px;color:#555}.detail code{font-size:15px;font-weight:600}</style><main>${body}</main></html>`, {
+function html(env: Env, body: string, status = 200): Response {
+  return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${htmlEscape(appName(env))} · Connect</title><style>body{font:16px system-ui;max-width:620px;margin:8vh auto;padding:0 24px;line-height:1.5}button{font:inherit;padding:12px 20px;margin:8px 8px 0 0;border-radius:12px}code{overflow-wrap:anywhere}main{border:1px solid #ddd;border-radius:18px;padding:28px}.status{display:inline-block;font-size:13px;font-weight:600;padding:2px 10px;border-radius:999px;margin-right:6px}.good{background:#dff5e6;color:#14532d}.warning{background:#fdecc8;color:#7a4b00}.detail{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:12px;background:#f4f4f6}.detail span{font-size:13px;color:#555}.detail code{font-size:15px;font-weight:600}</style><main>${body}</main></html>`, {
     status, headers: {
       "content-type": "text/html; charset=utf-8", "cache-control": "no-store",
       "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https: http://localhost:* http://127.0.0.1:*; base-uri 'none'; frame-ancestors 'none'",
@@ -190,7 +190,7 @@ async function loadFlow(env: Env, flowId: string): Promise<Flow | null> {
 }
 
 export async function beginAuthorization(req: Request, env: Env): Promise<Response> {
-  if (!configured(env)) return html("<h1>Apple sign-in is not configured</h1>", 503);
+  if (!configured(env)) return html(env, "<h1>Apple sign-in is not configured</h1>", 503);
   const url = new URL(req.url);
   const q = url.searchParams;
   const clientId = q.get("client_id") ?? "";
@@ -201,7 +201,7 @@ export async function beginAuthorization(req: Request, env: Env): Promise<Respon
   if (!client || q.get("response_type") !== "code" || !client.redirects.includes(redirectUri)
     || q.get("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(challenge)
     || !requested || q.get("resource") !== audience(env, "mcp")) {
-    return html("<h1>Invalid authorization request</h1><p>Check client registration, PKCE, scopes, and resource.</p>", 400);
+    return html(env, "<h1>Invalid authorization request</h1><p>Check client registration, PKCE, scopes, and resource.</p>", 400);
   }
   const flowId = randomToken(24);
   const nonce = randomToken(24);
@@ -224,19 +224,19 @@ export async function beginAuthorization(req: Request, env: Env): Promise<Respon
 }
 
 export async function appleCallback(req: Request, env: Env): Promise<Response> {
-  if (!configured(env)) return html("<h1>Apple sign-in is not configured</h1>", 503);
+  if (!configured(env)) return html(env, "<h1>Apple sign-in is not configured</h1>", 503);
   let form: URLSearchParams;
   try { form = new URLSearchParams(await textBody(req, 16000)); }
-  catch { return html("<h1>Invalid Apple response</h1>", 400); }
+  catch { return html(env, "<h1>Invalid Apple response</h1>", 400); }
   const flowId = form.get("state") ?? "";
   const flow = await loadFlow(env, flowId);
-  if (!flow || flow.tenant_id) return html("<h1>Sign-in session expired</h1><p>Start the connection again.</p>", 400);
+  if (!flow || flow.tenant_id) return html(env, "<h1>Sign-in session expired</h1><p>Start the connection again.</p>", 400);
   if (form.get("error")) return redirect(flow.redirect_uri, {
     error: "access_denied", state: flow.client_state, iss: publicOrigin(env),
   });
   const identityToken = form.get("id_token") ?? "";
   const code = form.get("code") ?? "";
-  if (!identityToken || !code) return html("<h1>Apple response was incomplete</h1>", 400);
+  if (!identityToken || !code) return html(env, "<h1>Apple response was incomplete</h1>", 400);
   try {
     const claims = await verifyAppleIdToken(identityToken, env.APPLE_WEB_CLIENT_ID!, flow.apple_nonce);
     const exchanged = await exchangeAppleCode(env, code, env.APPLE_WEB_CLIENT_ID!, env.APPLE_WEB_REDIRECT_URI!);
@@ -246,7 +246,7 @@ export async function appleCallback(req: Request, env: Env): Promise<Response> {
     const consentSecret = randomToken(24);
     const result = await env.DB.prepare(`UPDATE oauth_flows SET tenant_id = ?, consent_hash = ?
       WHERE id_hash = ? AND tenant_id IS NULL`).bind(tenant.id, await sha256Hex(consentSecret), flow.id_hash).run();
-    if (result.meta.changes !== 1) return html("<h1>Sign-in was already used</h1>", 400);
+    if (result.meta.changes !== 1) return html(env, "<h1>Sign-in was already used</h1>", 400);
     const target = `${publicOrigin(env)}/oauth/consent?flow=${encodeURIComponent(flowId)}`;
     return new Response(null, { status: 303, headers: {
       Location: target, "set-cookie": `tt_consent=${flowId}.${consentSecret}; Path=/oauth; Max-Age=600; HttpOnly; Secure; SameSite=Lax`,
@@ -254,7 +254,7 @@ export async function appleCallback(req: Request, env: Env): Promise<Response> {
     } });
   } catch (cause) {
     console.warn("Apple web sign-in failed", cause instanceof Error ? cause.message : "unknown error");
-    return html("<h1>Could not verify Apple sign-in</h1><p>Start the connection again.</p>", 401);
+    return html(env, "<h1>Could not verify Apple sign-in</h1><p>Start the connection again.</p>", 401);
   }
 }
 
@@ -276,14 +276,14 @@ async function authorizedConsent(req: Request, env: Env, flowId: string): Promis
 export async function showConsent(req: Request, env: Env): Promise<Response> {
   const flowId = new URL(req.url).searchParams.get("flow") ?? "";
   const authorized = await authorizedConsent(req, env, flowId);
-  if (!authorized) return html("<h1>Connection expired</h1><p>Start again in your MCP client.</p>", 401);
+  if (!authorized) return html(env, "<h1>Connection expired</h1><p>Start again in your MCP client.</p>", 401);
   const { flow, secret } = authorized;
   const verifiedName = verifiedClientName(env, flow.redirect_uri);
   const clientName = verifiedName ?? flow.client_name;
   const trust = verifiedName
-    ? `<p><span class="status good">Verified client</span> 00Todo recognizes this exact callback address.</p>`
+    ? `<p><span class="status good">Verified client</span> ${htmlEscape(appName(env))} recognizes this exact callback address.</p>`
     : `<p><span class="status warning">Unverified client</span> This name was supplied by the client. Check the callback address before approving.</p>`;
-  return html(`<h1>Connect ${htmlEscape(clientName)} to 00Todo?</h1>
+  return html(env, `<h1>Connect ${htmlEscape(clientName)} to ${htmlEscape(appName(env))}?</h1>
     ${trust}
     <p>This client can ${flow.scopes.includes("todo:write") ? "read and change" : "read"} your tasks and projects.</p>
     <p class="detail"><span>Redirects to</span><code>${htmlEscape(flow.redirect_uri)}</code></p>
@@ -298,16 +298,16 @@ export async function showConsent(req: Request, env: Env): Promise<Response> {
 export async function decideConsent(req: Request, env: Env): Promise<Response> {
   let form: URLSearchParams;
   try { form = new URLSearchParams(await textBody(req)); }
-  catch { return html("<h1>Invalid consent response</h1>", 400); }
+  catch { return html(env, "<h1>Invalid consent response</h1>", 400); }
   const flowId = form.get("flow") ?? "";
   const authorized = await authorizedConsent(req, env, flowId);
   if (!authorized || !constantTimeEqual(form.get("csrf") ?? "", authorized.secret)) {
-    return html("<h1>Connection expired</h1><p>Start again in your MCP client.</p>", 401);
+    return html(env, "<h1>Connection expired</h1><p>Start again in your MCP client.</p>", 401);
   }
   const { flow } = authorized;
   const removed = await env.DB.prepare("DELETE FROM oauth_flows WHERE id_hash = ? AND consent_hash = ?")
     .bind(flow.id_hash, flow.consent_hash).run();
-  if (removed.meta.changes !== 1) return html("<h1>Connection was already decided</h1>", 400);
+  if (removed.meta.changes !== 1) return html(env, "<h1>Connection was already decided</h1>", 400);
   if (form.get("decision") !== "approve") return redirect(flow.redirect_uri, {
     error: "access_denied", state: flow.client_state, iss: publicOrigin(env),
   });
