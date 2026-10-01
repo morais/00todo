@@ -60,5 +60,11 @@ namespace_id = "20003"
   limit = 300
   period = 60
 
+# Expired OAuth flows, codes, and credentials are swept occasionally by the
+# sign-in routes. On Workers Paid (or with a spare cron on Free, which allows
+# five per account), uncomment this to sweep on a schedule instead.
+# [triggers]
+# crons = ["17 4 * * *"]
+
 [observability]
 enabled = true

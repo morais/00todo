@@ -3,6 +3,7 @@ import { routeMcp } from "./mcp";
 import { authenticate, publicOrigin } from "./auth";
 import { deleteAccount, signInWithApple, signOut } from "./appAuth";
 import { disconnectMcpConnection, listMcpConnections } from "./mcpConnections";
+import { maybeSweep, sweepExpiredAuthData } from "./cleanup";
 import { signInAllowed, sourceAllowed, tenantAllowed, tooManyRequests } from "./rateLimit";
 import {
   appleCallback, authChallenge, authorizationServerMetadata, beginAuthorization,
@@ -15,13 +16,14 @@ const signInRoutes = new Set([
 ]);
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const path = new URL(req.url).pathname;
     const method = req.method;
     if (path === "/health" && method === "GET") return json({ ok: true });
     if (!(await sourceAllowed(env, req))) return tooManyRequests();
     if (signInRoutes.has(path) && method === "POST" || path === "/oauth/authorize") {
       if (!(await signInAllowed(env, req))) return tooManyRequests();
+      maybeSweep(env, ctx);
     }
     if (path === "/.well-known/oauth-protected-resource" && method === "GET") return protectedResourceMetadata(env);
     if (path === "/.well-known/oauth-protected-resource/mcp" && method === "GET") return protectedResourceMetadata(env);
@@ -52,5 +54,9 @@ export default {
     }
     if (path === "/") return Response.redirect(`${publicOrigin(env)}/health`, 302);
     return json({ error: "Not found" }, 404);
+  },
+
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(sweepExpiredAuthData(env));
   },
 };
