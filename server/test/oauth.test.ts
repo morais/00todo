@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { beginAuthorization, registerClient, authorizationServerMetadata, protectedResourceMetadata, verifiedClientName } from "../src/oauth";
+import { beginAuthorization, registerClient, authorizationServerMetadata, protectedResourceMetadata, verifiedClientName, reviewCallback, showReviewLogin } from "../src/oauth";
+import { sha256Hex } from "../src/auth";
 import type { Env } from "../src/api";
 
 const origin = "https://api.00todo.com";
@@ -125,5 +126,80 @@ describe("service name", () => {
     const generic = await protectedResourceMetadata({ PUBLIC_ORIGIN: origin } as unknown as Env).json() as { resource_name: string };
     expect(named.resource_name).toBe("00Todo");
     expect(generic.resource_name).toBe("Todo");
+  });
+});
+
+describe("dedicated MCP reviewer sign-in", () => {
+  async function reviewFlow() {
+    const tenantId = "dedicated-review-tenant";
+    const code = "tt_review_" + "A".repeat(43);
+    let flow: Record<string, unknown> | null = null;
+    const env = {
+      ...environment(), REVIEW_TENANT_IDS: tenantId,
+      DB: {
+        prepare(sql: string) {
+          return { bind(...args: unknown[]) {
+            return {
+              async run() {
+                if (sql.includes("INSERT INTO oauth_flows")) {
+                  flow = { id_hash: args[0], client_id: args[1], client_name: args[2],
+                    redirect_uri: args[3], code_challenge: args[4], client_state: args[5],
+                    resource: args[6], scopes: args[7], apple_nonce: args[8],
+                    tenant_id: null, consent_hash: null, expires_at: args[10] };
+                }
+                if (sql.includes("UPDATE oauth_flows") && flow && flow.tenant_id === null) {
+                  flow.tenant_id = args[0]; flow.consent_hash = args[1];
+                  return { meta: { changes: 1 } };
+                }
+                return { meta: { changes: 0 } };
+              },
+              async first() {
+                if (sql.includes("FROM oauth_flows")) return flow && flow.id_hash === args[0] ? flow : null;
+                if (sql.includes("FROM review_credentials")) return args[0] === await sha256Hex(code)
+                  ? { tenant_id: tenantId, expires_at: "2099-01-01T00:00:00.000Z", revoked_at: null } : null;
+                return null;
+              },
+            };
+          } };
+        },
+      } as unknown as D1Database,
+    } as Env;
+    const registered = await registerClient(new Request(`${origin}/oauth/register`, {
+      method: "POST", body: JSON.stringify({ client_name: "ChatGPT", redirect_uris: ["https://chatgpt.com/callback"] }),
+    }), env);
+    const { client_id } = await registered.json() as { client_id: string };
+    const url = new URL(`${origin}/oauth/authorize`);
+    url.search = new URLSearchParams({ client_id, response_type: "code", redirect_uri: "https://chatgpt.com/callback",
+      code_challenge_method: "S256", code_challenge: "A".repeat(43), resource: `${origin}/mcp` }).toString();
+    const response = await beginAuthorization(new Request(url), env);
+    const page = await response.text();
+    const flowId = page.match(/name="flow" value="([^"]+)"/)?.[1];
+    if (!flowId) throw new Error("Missing review flow");
+    return { env, code, flowId, response, page };
+  }
+
+  it("shows reviewer access only when a tenant is allowlisted", async () => {
+    const { env, flowId, response, page } = await reviewFlow();
+    expect(response.status).toBe(200);
+    expect(page).toContain("Reviewer access");
+    expect(page).toContain("Continue with Apple");
+    const apple = await showReviewLogin(new Request(`${origin}/oauth/login?flow=${flowId}`), env);
+    expect(apple.status).toBe(302);
+    expect(new URL(apple.headers.get("location")!).hostname).toBe("appleid.apple.com");
+  });
+
+  it("rejects cross-origin and invalid codes, then allows the dedicated tenant", async () => {
+    const { env, code, flowId } = await reviewFlow();
+    const request = (accessCode: string, requestOrigin: string) => new Request(`${origin}/auth/review/callback`, {
+      method: "POST", headers: { origin: requestOrigin, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ flow: flowId, accessCode }),
+    });
+    expect((await reviewCallback(request(code, "https://evil.example"), env)).status).toBe(403);
+    expect((await reviewCallback(request("tt_review_" + "B".repeat(43), origin), env)).status).toBe(401);
+    const accepted = await reviewCallback(request(code, origin), env);
+    expect(accepted.status).toBe(303);
+    expect(accepted.headers.get("location")).toContain(`/oauth/consent?flow=${flowId}`);
+    expect(accepted.headers.get("set-cookie")).toContain("HttpOnly; Secure");
+    expect((await reviewCallback(request(code, origin), env)).status).toBe(401);
   });
 });

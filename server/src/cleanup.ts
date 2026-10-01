@@ -11,6 +11,7 @@ export async function sweepExpiredAuthData(env: Env, now = new Date()): Promise<
     env.DB.prepare("DELETE FROM oauth_codes WHERE expires_at <= ?").bind(cutoff),
     env.DB.prepare("DELETE FROM credentials WHERE expires_at <= ?").bind(cutoff),
     env.DB.prepare("DELETE FROM credentials WHERE revoked_at IS NOT NULL").bind(),
+    env.DB.prepare("DELETE FROM review_credentials WHERE expires_at <= ? OR revoked_at IS NOT NULL").bind(cutoff),
   ]);
 }
 

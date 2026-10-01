@@ -11,7 +11,9 @@ it("exposes task and project tools with JSON schemas", async () => {
     method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
   });
   const response = await routeMcp(request, env, principal);
-  const body = await response.json() as { result: { tools: Array<{ name: string; inputSchema: object }> } };
+  const body = await response.json() as { result: { tools: Array<{ name: string; inputSchema: object; annotations: {
+    readOnlyHint: boolean; openWorldHint: boolean; destructiveHint: boolean;
+  } }> } };
   expect(body.result.tools.map((tool) => tool.name)).toContain("create_task");
   expect(body.result.tools.map((tool) => tool.name)).toContain("list_projects");
   expect(body.result.tools[0].inputSchema).toHaveProperty("type", "object");
@@ -19,6 +21,12 @@ it("exposes task and project tools with JSON schemas", async () => {
   const updateTask = body.result.tools.find((tool) => tool.name === "update_task") as { inputSchema: { required?: string[] } };
   expect(createTask.inputSchema.required).toEqual(["title"]);
   expect(updateTask.inputSchema.required).toEqual(["id"]);
+  for (const tool of body.result.tools) {
+    expect(typeof tool.annotations.readOnlyHint).toBe("boolean");
+    expect(tool.annotations.openWorldHint).toBe(false);
+    expect(typeof tool.annotations.destructiveHint).toBe("boolean");
+  }
+  expect(body.result.tools.find((tool) => tool.name === "update_task")?.annotations.destructiveHint).toBe(true);
 });
 
 it("rejects invalid tool arguments before any data write", async () => {

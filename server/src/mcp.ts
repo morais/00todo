@@ -30,12 +30,12 @@ const tools: Tool[] = [
     method: "POST", path: () => "/v1/tasks", payload: (a) => a, readOnly: false },
   { name: "update_task", description: "Edit a task's title, notes, project, start date/time, due date, sort order, or completion.",
     schema: TaskPatch.extend({ id }), method: "PATCH", path: (a) => `/v1/tasks/${a.id}`,
-    payload: ({ id: _id, ...a }) => a, readOnly: false },
+    payload: ({ id: _id, ...a }) => a, readOnly: false, destructive: true },
   { name: "delete_task", description: "Permanently delete a task.", schema: z.object({ id }), method: "DELETE", path: (a) => `/v1/tasks/${a.id}`, readOnly: false, destructive: true },
   { name: "create_project", description: "Create a project with notes, independent start and due dates, optional local startTime (HH:mm, requires startDate), and subtasks added with create_task/projectId.", schema: ProjectInput,
     method: "POST", path: () => "/v1/projects", payload: (a) => a, readOnly: false },
   { name: "update_project", description: "Edit a project's name, notes, start date/time, due date, sort order, or completion.", schema: ProjectPatch.extend({ id }),
-    method: "PATCH", path: (a) => `/v1/projects/${a.id}`, payload: ({ id: _id, ...a }) => a, readOnly: false },
+    method: "PATCH", path: (a) => `/v1/projects/${a.id}`, payload: ({ id: _id, ...a }) => a, readOnly: false, destructive: true },
   { name: "delete_project", description: "Delete a project. Its subtasks become standalone tasks.", schema: z.object({ id }),
     method: "DELETE", path: (a) => `/v1/projects/${a.id}`, readOnly: false, destructive: true },
 ];
@@ -48,7 +48,7 @@ function listTools(): unknown[] {
     name: tool.name,
     description: tool.description,
     inputSchema: z.toJSONSchema(tool.schema, { io: "input" }),
-    annotations: { readOnlyHint: tool.readOnly, destructiveHint: Boolean(tool.destructive), idempotentHint: tool.method !== "POST" },
+    annotations: { readOnlyHint: tool.readOnly, openWorldHint: false, destructiveHint: Boolean(tool.destructive), idempotentHint: tool.method !== "POST" },
   }));
   return toolList;
 }

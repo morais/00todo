@@ -27,6 +27,10 @@ APPLE_KEY_ID = "REPLACE_WITH_SIGN_IN_WITH_APPLE_KEY_ID"
 # show as unverified. Never use URL prefixes or localhost callbacks here.
 # MCP_VERIFIED_CLIENTS = "{\"https://chatgpt.com/connector_platform_oauth_redirect\":\"ChatGPT\",\"https://claude.ai/api/mcp/auth_callback\":\"Claude\",\"https://claude.com/api/mcp/auth_callback\":\"Claude\",\"https://www.cursor.com/agents/mcp/oauth/callback\":\"Cursor\",\"https://vscode.dev/redirect\":\"VS Code\",\"https://insiders.vscode.dev/redirect\":\"VS Code Insiders\",\"https://callback.mistral.ai/v1/integrations_auth/oauth2_callback\":\"Mistral\",\"https://manus.im/api/webhook/mcp/callback\":\"Manus\"}"
 
+# Optional dedicated reviewer tenant UUIDs. A zero-scope review code in D1
+# works only for a tenant on this allowlist, and only on the MCP consent page.
+# REVIEW_TENANT_IDS = "<dedicated-review-tenant-uuid>"
+
 # Replace with the hostname you own before deployment. The planned production
 # host is 00todo.com; api.example.com keeps this public sample deploy-safe.
 [[routes]]

@@ -21,6 +21,11 @@ type Code = {
   code_hash: string; tenant_id: string; client_id: string; redirect_uri: string;
   code_challenge: string; resource: string; scopes: string; expires_at: string; redeemed_at: string | null;
 };
+type ReviewCredential = { tenant_id: string; expires_at: string; revoked_at: string | null };
+
+function reviewTenantIds(env: Env): Set<string> {
+  return new Set((env.REVIEW_TENANT_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean));
+}
 
 function configured(env: Env): boolean {
   return Boolean(env.OAUTH_SIGNING_SECRET && env.OAUTH_SIGNING_SECRET.length >= 32
@@ -214,6 +219,27 @@ export async function beginAuthorization(req: Request, env: Env): Promise<Respon
     q.get("state")?.slice(0, 512) ?? null, audience(env, "mcp"), requested.join(" "),
     nonce, now.toISOString(), new Date(now.getTime() + flowLifetimeMs).toISOString(),
   ).run();
+  if (reviewTenantIds(env).size) {
+    return html(env, `<h1>Sign in to ${htmlEscape(appName(env))}</h1>
+      <p>Use your Apple account to connect ${htmlEscape(client.name)}.</p>
+      <form method="get" action="/oauth/login">
+        <input type="hidden" name="flow" value="${htmlEscape(flowId)}">
+        <button>Continue with Apple</button>
+      </form>
+      <details><summary>Reviewer access</summary>
+        <p>For the dedicated review account only. Enter the access code supplied in the secure reviewer instructions.</p>
+        <form method="post" action="/auth/review/callback">
+          <input type="hidden" name="flow" value="${htmlEscape(flowId)}">
+          <label for="access-code">Review access code</label><br>
+          <input id="access-code" name="accessCode" type="password" autocomplete="off" required maxlength="128">
+          <button>Continue as reviewer</button>
+        </form>
+      </details>`);
+  }
+  return appleAuthorize(env, flowId, nonce);
+}
+
+function appleAuthorize(env: Env, flowId: string, nonce: string): Response {
   const apple = new URL("https://appleid.apple.com/auth/authorize");
   apple.search = new URLSearchParams({
     client_id: env.APPLE_WEB_CLIENT_ID!, redirect_uri: env.APPLE_WEB_REDIRECT_URI!,
@@ -221,6 +247,50 @@ export async function beginAuthorization(req: Request, env: Env): Promise<Respon
     state: flowId, nonce,
   }).toString();
   return new Response(null, { status: 302, headers: { Location: apple.toString(), "cache-control": "no-store" } });
+}
+
+export async function showReviewLogin(req: Request, env: Env): Promise<Response> {
+  if (!reviewTenantIds(env).size) return html(env, "<h1>Not found</h1>", 404);
+  const flowId = new URL(req.url).searchParams.get("flow") ?? "";
+  const flow = await loadFlow(env, flowId);
+  if (!flow || flow.tenant_id) return html(env, "<h1>Sign-in session expired</h1><p>Start the connection again.</p>", 400);
+  return appleAuthorize(env, flowId, flow.apple_nonce);
+}
+
+export async function reviewCallback(req: Request, env: Env): Promise<Response> {
+  const allowed = reviewTenantIds(env);
+  if (!allowed.size) return html(env, "<h1>Not found</h1>", 404);
+  if (req.headers.get("origin") !== publicOrigin(env)) return html(env, "<h1>Invalid request origin</h1>", 403);
+  let form: URLSearchParams;
+  try { form = new URLSearchParams(await textBody(req, 1024)); }
+  catch { return html(env, "<h1>Invalid review sign-in</h1>", 400); }
+  const flowId = form.get("flow") ?? "";
+  const flow = await loadFlow(env, flowId);
+  const accessCode = form.get("accessCode") ?? "";
+  if (!flow || flow.tenant_id || !/^tt_review_[A-Za-z0-9_-]{43}$/.test(accessCode)) {
+    return html(env, "<h1>Invalid or expired review access</h1>", 401);
+  }
+  const credential = await env.DB.prepare(`SELECT tenant_id, expires_at, revoked_at
+    FROM review_credentials WHERE token_hash = ?`)
+    .bind(await sha256Hex(accessCode)).first<ReviewCredential>();
+  if (!credential || credential.revoked_at || credential.expires_at <= new Date().toISOString()
+    || !allowed.has(credential.tenant_id)) {
+    return html(env, "<h1>Invalid or expired review access</h1>", 401);
+  }
+  const consentSecret = randomToken(24);
+  const result = await env.DB.prepare(`UPDATE oauth_flows SET tenant_id = ?, consent_hash = ?
+    WHERE id_hash = ? AND tenant_id IS NULL AND expires_at > ?`)
+    .bind(credential.tenant_id, await sha256Hex(consentSecret), flow.id_hash, new Date().toISOString()).run();
+  if (result.meta.changes !== 1) return html(env, "<h1>Sign-in was already used</h1>", 400);
+  return consentRedirect(env, flowId, consentSecret);
+}
+
+function consentRedirect(env: Env, flowId: string, secret: string): Response {
+  return new Response(null, { status: 303, headers: {
+    Location: `${publicOrigin(env)}/oauth/consent?flow=${encodeURIComponent(flowId)}`,
+    "set-cookie": `tt_consent=${flowId}.${secret}; Path=/oauth; Max-Age=600; HttpOnly; Secure; SameSite=Lax`,
+    "cache-control": "no-store",
+  } });
 }
 
 export async function appleCallback(req: Request, env: Env): Promise<Response> {
@@ -247,11 +317,7 @@ export async function appleCallback(req: Request, env: Env): Promise<Response> {
     const result = await env.DB.prepare(`UPDATE oauth_flows SET tenant_id = ?, consent_hash = ?
       WHERE id_hash = ? AND tenant_id IS NULL`).bind(tenant.id, await sha256Hex(consentSecret), flow.id_hash).run();
     if (result.meta.changes !== 1) return html(env, "<h1>Sign-in was already used</h1>", 400);
-    const target = `${publicOrigin(env)}/oauth/consent?flow=${encodeURIComponent(flowId)}`;
-    return new Response(null, { status: 303, headers: {
-      Location: target, "set-cookie": `tt_consent=${flowId}.${consentSecret}; Path=/oauth; Max-Age=600; HttpOnly; Secure; SameSite=Lax`,
-      "cache-control": "no-store",
-    } });
+    return consentRedirect(env, flowId, consentSecret);
   } catch (cause) {
     console.warn("Apple web sign-in failed", cause instanceof Error ? cause.message : "unknown error");
     return html(env, "<h1>Could not verify Apple sign-in</h1><p>Start the connection again.</p>", 401);

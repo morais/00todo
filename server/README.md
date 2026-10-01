@@ -39,6 +39,12 @@ MCP clients use authorization-code flow with S256 PKCE, resource indicator `<PUB
 
 The iOS app's MCP Connections screen shows the server address and active OAuth grants. Its app-only `GET /v1/account/mcp-connections` lists grant IDs, client names, scopes, and timestamps, never tokens or hashes. `DELETE /v1/account/mcp-connections/:id` revokes one of the signed-in tenant's grants. There is no bare-token integration flow.
 
+### Dedicated MCP reviewer access
+
+For public MCP review, set up a dedicated tenant with `node scripts/provision-review.mjs` after applying migrations. The script seeds sample tasks and a shopping project, saves the one-year access code to ignored `server/.review-access.json` (mode 0600), and prints only the tenant UUID. Put that UUID in `REVIEW_TENANT_IDS` in the ignored production Wrangler config and deploy. The MCP authorization page then offers a discreet **Reviewer access** option alongside Sign in with Apple. Share the code only in the review portal's secure credentials field, never in the plugin ZIP or Git.
+
+The code is stored only as a SHA-256 hash in `review_credentials`. It has no REST or MCP bearer scope: it can only select the allowlisted demo tenant for a pending, rate-limited OAuth flow, followed by the normal client consent screen. Remove the UUID from `REVIEW_TENANT_IDS` to disable reviewer sign-in immediately. A review code can also be revoked in D1 by setting `revoked_at`; separately revoke any issued MCP grants when review ends.
+
 Three Workers Rate Limiting bindings in `wrangler.toml.sample` cap traffic before D1 is touched: 600 requests a minute per IP, 20 sign-in or OAuth requests a minute per IP, and 300 authenticated requests a minute per account. Refused requests get `429` with `Retry-After: 60`. Each account is also capped at 5,000 tasks and 1,000 projects.
 
 All task/project queries include `tenant_id`, and D1 triggers prevent a task from referring to another tenant's project. A legacy tenant preserves any old local prototype data without exposing it to Apple accounts.
