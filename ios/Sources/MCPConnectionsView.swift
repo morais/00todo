@@ -186,6 +186,7 @@ struct MCPConnectionsView: View {
 private struct MCPGuideStep: View {
     let number: Int
     let instruction: String
+    @ScaledMetric(relativeTo: .footnote) private var badgeSize = 22.0
 
     init(_ number: Int, _ instruction: String) {
         self.number = number
@@ -197,7 +198,7 @@ private struct MCPGuideStep: View {
             Text("\(number)")
                 .font(.footnote.weight(.bold))
                 .foregroundStyle(.white)
-                .frame(width: 22, height: 22)
+                .frame(minWidth: badgeSize, minHeight: badgeSize)
                 .background(Circle().fill(Color.accentColor))
             Text(instruction)
                 .font(.subheadline)

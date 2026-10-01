@@ -9,6 +9,22 @@ struct SignInView: View {
     @State private var errorText: String?
 
     var body: some View {
+        // A scroll view that is at least screen-height keeps the centred
+        // layout at normal sizes and lets the largest text sizes scroll
+        // instead of pushing Sign in off screen.
+        GeometryReader { geometry in
+            ScrollView {
+                content
+                    .frame(minHeight: geometry.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .alert("Could not sign in", isPresented: Binding(
+            get: { errorText != nil }, set: { if !$0 { errorText = nil } }
+        )) { Button("OK", role: .cancel) {} } message: { Text(errorText ?? "") }
+    }
+
+    private var content: some View {
         VStack(spacing: 22) {
             Spacer()
             Image("BrandMark")
@@ -68,10 +84,7 @@ struct SignInView: View {
         }
         .padding(28)
         .frame(maxWidth: 560)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .alert("Could not sign in", isPresented: Binding(
-            get: { errorText != nil }, set: { if !$0 { errorText = nil } }
-        )) { Button("OK", role: .cancel) {} } message: { Text(errorText ?? "") }
+        .frame(maxWidth: .infinity)
     }
 
     private static func makeNonce() -> String {

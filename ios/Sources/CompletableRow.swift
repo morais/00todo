@@ -19,3 +19,16 @@ struct CompletableRow: ViewModifier {
             }
     }
 }
+
+/// The secondary line of a row: side by side when it fits, otherwise
+/// stacked, so larger text sizes never squeeze or truncate it.
+struct RowDetails<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { content }
+            VStack(alignment: .leading, spacing: 2) { content }
+        }
+    }
+}

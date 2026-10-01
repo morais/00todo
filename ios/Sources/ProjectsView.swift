@@ -56,7 +56,7 @@ struct ProjectRow: View {
                         .strikethrough(project.completedAt != nil)
                         .foregroundStyle(project.completedAt == nil ? .primary : .secondary)
                 }
-                HStack(spacing: 8) {
+                RowDetails {
                     Text("\(openCount) \(openCount == 1 ? "subtask" : "subtasks")")
                     if let startDate = project.startDate,
                        !TodoDates.hasStarted(startDate: startDate, startTime: project.startTime, at: Date()) {

@@ -291,7 +291,10 @@ struct TasksView: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("\(AppBrand.name)")
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.title2.bold())
+                        // The navigation bar caps its text size; long-press
+                        // shows the title enlarged at accessibility sizes.
+                        .accessibilityShowsLargeContentViewer()
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { showSettings = true } label: { Image(systemName: "gearshape") }
@@ -382,10 +385,9 @@ struct TaskRow: View {
                 Text(task.title)
                     .foregroundStyle(task.completedAt == nil ? .primary : .secondary)
                     .strikethrough(task.completedAt != nil)
-                HStack(spacing: 8) {
+                RowDetails {
                     if let project {
                         Label(project.name, systemImage: "folder")
-                            .lineLimit(1)
                     }
                     if let start = effectiveStart,
                        !TodoDates.hasStarted(startDate: start.date, startTime: start.time, at: Date()) {
