@@ -96,6 +96,10 @@ enum TodoDates {
         return startTime.map { $0 <= timeString(from: now) } ?? true
     }
 
+    static func isOverdue(_ dueDate: String, at now: Date) -> Bool {
+        dueDate < string(from: now)
+    }
+
     static func upcomingGroup(for startDate: String?, at now: Date) -> UpcomingGroup {
         guard let startDate else { return .future }
         let calendar = Calendar.current

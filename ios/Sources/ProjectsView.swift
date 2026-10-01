@@ -62,8 +62,7 @@ struct ProjectRow: View {
                         Text(TodoDates.startLabel(date: startDate, time: project.startTime))
                     }
                     if let dueDate = project.dueDate {
-                        Text("Due \(dueDate)")
-                            .foregroundStyle(dueDate < TodoDates.string(from: Date()) && project.completedAt == nil ? Color.red : Color.secondary)
+                        DueLabel(dueDate: dueDate, isOpen: project.completedAt == nil)
                     }
                 }
                 .font(.caption)

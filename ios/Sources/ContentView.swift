@@ -392,8 +392,7 @@ struct TaskRow: View {
                         Text(TodoDates.startLabel(date: start.date, time: start.time))
                     }
                     if let dueDate = task.dueDate {
-                        Text("Due \(dueDate)")
-                            .foregroundStyle(dueDate < TodoDates.string(from: Date()) && task.completedAt == nil ? Color.red : Color.secondary)
+                        DueLabel(dueDate: dueDate, isOpen: task.completedAt == nil)
                     }
                 }
                 .font(.caption)
