@@ -58,6 +58,9 @@ struct SignInView: View {
             .frame(height: 52)
             .disabled(busy)
             if busy { ProgressView("Signing in…") }
+            Button("Try with demo data") { store.startDemo() }
+                .buttonStyle(.bordered)
+                .disabled(busy)
             Text("Your Apple account keeps your tasks separate. Your email is optional and is never used as your account ID.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)

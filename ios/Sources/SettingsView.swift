@@ -11,47 +11,56 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Apple account") {
-                    LabeledContent("Signed in as", value: store.accountEmail ?? "Apple account")
-                    Button("Sign out", role: .destructive) { confirmSignOut = true }
-                }
-                if TodoStore.allowsCustomServer {
+                if store.isDemo {
                     Section {
-                        TextField("https://api.example.com", text: $address)
-                            .keyboardType(.URL)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        Button("Save server") {
-                            do {
-                                try store.configureServer(address: address)
-                            } catch { errorText = error.localizedDescription }
-                        }
+                        Button("Sign in with Apple") { store.endDemo(); dismiss() }
                     } header: {
-                        Text("Server")
+                        Text("Demo")
                     } footer: {
-                        Text("Changing servers signs you out. Sync pending changes first. Development builds only.")
+                        Text("You're trying \(AppBrand.name) with sample data. Changes stay on this screen and are discarded when you sign in.")
                     }
-                }
-                Section("Sync") {
-                    Button("Refresh now") { Task { await store.refresh() } }
-                        .disabled(!store.isConfigured || store.refreshing)
-                    if store.hasPendingChanges {
-                        LabeledContent("Changes waiting to sync", value: "\(store.pendingChanges.count)")
+                } else {
+                    Section("Apple account") {
+                        LabeledContent("Signed in as", value: store.accountEmail ?? "Apple account")
+                        Button("Sign out", role: .destructive) { confirmSignOut = true }
                     }
-                    if let message = store.message { Text(message).foregroundStyle(.red) }
-                }
-                DemoDataSettingsSection()
-                Section("Integrations") {
-                    NavigationLink {
-                        MCPConnectionsView()
-                    } label: {
-                        Label("MCP connections", systemImage: "point.3.connected.trianglepath.dotted")
+                    if TodoStore.allowsCustomServer {
+                        Section {
+                            TextField("https://api.example.com", text: $address)
+                                .keyboardType(.URL)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                            Button("Save server") {
+                                do {
+                                    try store.configureServer(address: address)
+                                } catch { errorText = error.localizedDescription }
+                            }
+                        } header: {
+                            Text("Server")
+                        } footer: {
+                            Text("Changing servers signs you out. Sync pending changes first. Development builds only.")
+                        }
                     }
-                }
-                Section {
-                    Button("Delete account and all tasks", role: .destructive) { showDelete = true }
-                } footer: {
-                    Text("This permanently removes your tasks, projects, and all connected MCP sessions.")
+                    Section("Sync") {
+                        Button("Refresh now") { Task { await store.refresh() } }
+                            .disabled(!store.isConfigured || store.refreshing)
+                        if store.hasPendingChanges {
+                            LabeledContent("Changes waiting to sync", value: "\(store.pendingChanges.count)")
+                        }
+                        if let message = store.message { Text(message).foregroundStyle(.red) }
+                    }
+                    Section("Integrations") {
+                        NavigationLink {
+                            MCPConnectionsView()
+                        } label: {
+                            Label("MCP connections", systemImage: "point.3.connected.trianglepath.dotted")
+                        }
+                    }
+                    Section {
+                        Button("Delete account and all tasks", role: .destructive) { showDelete = true }
+                    } footer: {
+                        Text("This permanently removes your tasks, projects, and all connected MCP sessions.")
+                    }
                 }
             }
             .navigationTitle("Settings")
@@ -74,51 +83,4 @@ struct SettingsView: View {
         }
     }
 
-}
-
-private struct DemoDataSettingsSection: View {
-    @Environment(TodoStore.self) private var store
-    @State private var confirmCreate = false
-    @State private var confirmRemove = false
-    @State private var busy = false
-    @State private var errorText: String?
-
-    var body: some View {
-        Section {
-            Button("Create demo data") { confirmCreate = true }
-                .disabled(busy || store.hasDemoData)
-            if store.hasDemoData {
-                Button("Remove demo data (\(store.demoItemCount) items)", role: .destructive) {
-                    confirmRemove = true
-                }
-                .disabled(busy)
-            }
-        } header: {
-            Text("Screenshots")
-        } footer: {
-            Text("Adds sample tasks and projects to this account for screenshots. Remove demo data deletes only those sample items.")
-        }
-        .confirmationDialog("Create screenshot demo data?", isPresented: $confirmCreate) {
-            Button("Create demo data") { run { try await store.createDemoData() } }
-        } message: {
-            Text("This adds sample tasks and projects to your account. You can remove them here later.")
-        }
-        .confirmationDialog("Remove all demo data?", isPresented: $confirmRemove) {
-            Button("Remove demo data", role: .destructive) { run { try await store.removeDemoData() } }
-        } message: {
-            Text("Only items created by the demo-data button are removed, including any edits you've made to them.")
-        }
-        .alert("Demo data", isPresented: Binding(
-            get: { errorText != nil }, set: { if !$0 { errorText = nil } }
-        )) { Button("OK", role: .cancel) {} } message: { Text(errorText ?? "") }
-    }
-
-    private func run(_ operation: @escaping () async throws -> Void) {
-        busy = true
-        Task {
-            defer { busy = false }
-            do { try await operation() }
-            catch { errorText = error.localizedDescription }
-        }
-    }
 }

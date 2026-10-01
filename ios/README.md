@@ -34,9 +34,9 @@ Existing task editors use the navigation Back button without a second Cancel but
 
 The share-sheet extension accepts web links and plain text. It puts shared URLs in the task description, suggests an editable task title with Apple's on-device Foundation Models when available for the device and locale, and otherwise uses a source-title/text fallback. It does not fetch or transmit content for title inference. Pressing Add first writes a task with a stable ID into an App Group inbox, then tries a brief direct API upload. If that cannot complete, the main app imports the task into its offline queue on its next launch or foreground activation. The extension uses the app's shared Keychain session; no token is written to the inbox or widget snapshot.
 
-Settings → Screenshots can create a small set of sample tasks and projects across Available, Upcoming, and Completed for screenshots. The items are ordinary account data and sync like any other edits. Settings can remove all items created by this button, including any subsequent edits to those items; it does not remove other account data.
+Before signing in, Try with demo data opens the app with a small set of sample tasks and projects across Available, Upcoming, and Completed. Demo changes stay in memory: nothing is saved, queued, sent to the server, or shown in widgets. A banner and Settings offer Sign in with Apple, which discards the demo data.
 
-For repeatable app-only promotional captures on iPhone and iPad, run `marketing/screenshots/capture-ios.sh` from the repository root. It uses an isolated simulator fixture based on that demo catalog, XCUITest, and a provenance-checked compositor; it does not touch the signed-in account. See [screenshot pipeline](../artifacts/screenshots/README.md).
+For repeatable app-only promotional captures on iPhone and iPad, run `marketing/screenshots/capture-ios.sh` from the repository root. It uses an isolated simulator fixture based on the same demo data, XCUITest, and a provenance-checked compositor; it does not touch the signed-in account. See [screenshot pipeline](../artifacts/screenshots/README.md).
 
 For a simulator compile without signing:
 

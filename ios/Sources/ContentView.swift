@@ -27,6 +27,25 @@ enum QuickAddLaunch: String, Identifiable {
     }
 }
 
+private struct DemoNotice: View {
+    @Environment(TodoStore.self) private var store
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Label("Demo data. Changes aren't saved.", systemImage: "sparkles")
+                .font(.footnote.weight(.medium))
+            Spacer(minLength: 0)
+            Button("Sign in") { store.endDemo() }
+                .font(.footnote.bold())
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.thinMaterial)
+    }
+}
+
 struct ContentView: View {
     @Environment(TodoStore.self) private var store
     @Environment(\.scenePhase) private var scenePhase
@@ -38,6 +57,9 @@ struct ContentView: View {
         Group {
             if store.isConfigured {
                 TasksView(pendingQuickAdd: $pendingQuickAdd, pendingWidgetDestination: $pendingWidgetDestination)
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        if store.isDemo && !store.hidesDemoNotice { DemoNotice() }
+                    }
             } else {
                 SignInView()
             }

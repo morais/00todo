@@ -48,7 +48,11 @@ struct CreatedProject {
     private(set) var pendingChanges: [PendingMutation] = []
     private var syncing = false
     private var refreshAfterCurrent = false
-    private(set) var isScreenshotDemo = false
+    /// Demo mode shows sample data without an account. Nothing is persisted,
+    /// queued, or sent, and widgets and the badge are left alone.
+    private(set) var isDemo = false
+    /// The screenshot fixture is demo mode without the visible demo notice.
+    private(set) var hidesDemoNotice = false
 
     private static let tokenService = "00todo.api-token"
 
@@ -82,14 +86,9 @@ struct CreatedProject {
         #if TODO_SCREENSHOTS
         if ProcessInfo.processInfo.arguments.contains("--screenshot-demo") {
             UserDefaults.standard.set(true, forKey: "showProjectTasksInLists")
-            let snapshot = DemoDataCatalog.screenshotSnapshot()
             serverAddress = "https://screenshot-demo.invalid"
-            token = "screenshot-only"
-            accountEmail = "Screenshot demo"
-            tenantId = "screenshot-demo"
-            projects = snapshot.projects
-            tasks = snapshot.tasks
-            isScreenshotDemo = true
+            hidesDemoNotice = true
+            startDemo()
             return
         }
         #endif
@@ -104,6 +103,30 @@ struct CreatedProject {
     }
 
     var isConfigured: Bool { !serverAddress.isEmpty && !token.isEmpty }
+
+    func startDemo() {
+        guard token.isEmpty || isDemo else { return }
+        let snapshot = DemoDataCatalog.snapshot()
+        token = "demo-only"
+        tenantId = "demo"
+        accountEmail = nil
+        projects = snapshot.projects
+        tasks = snapshot.tasks
+        pendingChanges = []
+        message = nil
+        isDemo = true
+    }
+
+    func endDemo() {
+        guard isDemo else { return }
+        isDemo = false
+        token = ""
+        tenantId = nil
+        projects = []
+        tasks = []
+        pendingChanges = []
+        message = nil
+    }
     var hasPendingChanges: Bool { !pendingChanges.isEmpty }
 
     func configureServer(address: String) throws {
@@ -138,6 +161,7 @@ struct CreatedProject {
             throw TodoError.server((try? JSONDecoder().decode(APIError.self, from: data).error) ?? "Sign-in failed (\(response.statusCode))")
         }
         let login = try JSONDecoder().decode(AppleLoginResponse.self, from: data)
+        endDemo()
         try Self.saveToken(login.token)
         if tenantId != login.tenant.id {
             projects = []
@@ -160,6 +184,7 @@ struct CreatedProject {
     }
 
     func signOut() async {
+        if isDemo { endDemo(); return }
         if isConfigured {
             let _: [String: Bool]? = try? await request("/v1/auth/logout", method: "POST")
         }
@@ -174,7 +199,6 @@ struct CreatedProject {
         clearLocalSession()
         if let deletedTenant {
             try? FileManager.default.removeItem(at: Self.stateURL(for: deletedTenant))
-            clearDemoData(for: deletedTenant)
         }
     }
 
@@ -213,17 +237,17 @@ struct CreatedProject {
     }
 
     func syncBadge() async {
-        guard isConfigured, !isScreenshotDemo else { return }
+        guard isConfigured, !isDemo else { return }
         await AvailableBadge.sync(snapshot: widgetSnapshot, expandProjects: expandProjects)
     }
 
     func updateCurrentBadge(at now: Date = Date()) async {
-        guard isConfigured, !isScreenshotDemo else { return }
+        guard isConfigured, !isDemo else { return }
         await AvailableBadge.updateCurrent(snapshot: widgetSnapshot, expandProjects: expandProjects, at: now)
     }
 
     func refresh() async {
-        guard isConfigured, !isScreenshotDemo else { return }
+        guard isConfigured, !isDemo else { return }
         guard !refreshing else {
             refreshAfterCurrent = true
             return
@@ -258,7 +282,7 @@ struct CreatedProject {
     }
 
     func importSharedTasks() {
-        guard isConfigured, !isScreenshotDemo, let tenantId else { return }
+        guard isConfigured, !isDemo, let tenantId else { return }
         for item in SharedTaskInbox.pending(tenantId: tenantId, serverAddress: serverAddress) {
             if tasks.contains(where: { $0.id == item.id }) {
                 SharedTaskInbox.remove(item.id)
@@ -393,6 +417,10 @@ struct CreatedProject {
 
     private func record(_ mutation: PendingMutation, apply: () -> Void) throws {
         guard isConfigured, tenantId != nil else { throw TodoError.notConfigured }
+        if isDemo {
+            apply()
+            return
+        }
         let oldProjects = projects
         let oldTasks = tasks
         apply()
@@ -490,6 +518,7 @@ struct CreatedProject {
 
     private func send(_ path: String, method: String, rawBody: Data?) async throws -> Data {
         guard isConfigured else { throw TodoError.notConfigured }
+        guard !isDemo else { throw TodoError.server("Sign in with Apple to use this.") }
         let requestToken = token
         guard let base = URL(string: serverAddress), let url = URL(string: path, relativeTo: base)?.absoluteURL else { throw TodoError.invalidServer }
         var request = URLRequest(url: url)
