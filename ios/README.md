@@ -10,7 +10,7 @@ xcodegen generate
 open ZeroZeroTodo.xcodeproj
 ```
 
-Before a device or TestFlight build, replace `PRODUCT_BUNDLE_IDENTIFIER` with the Apple App ID, set `DEVELOPMENT_TEAM`, and set `TodoServerBaseURL` to `https://api.00todo.com`. Set `TodoAppGroup` and the matching App Groups entitlements for the app, widget, and share extension to an App Group registered and attached to all three App IDs. The app App ID must also have Sign in with Apple enabled. All three provisioning profiles must carry their App Group entitlement. The `.sample` intentionally retains example values.
+Before a device or TestFlight build, replace `PRODUCT_BUNDLE_IDENTIFIER` with the Apple App ID, set `DEVELOPMENT_TEAM`, and set `TodoServerBaseURL` to your Worker origin (`https://api.00todo.com` for the official app). Set `TodoAppGroup` and the matching App Groups entitlements for the app, widget, and share extension to an App Group registered and attached to all three App IDs. The app App ID must also have Sign in with Apple enabled. All three provisioning profiles must carry their App Group entitlement. The `.sample` intentionally retains example values.
 
 The App Store icon, in-app mark, and light/dark wordmarks come from the 00Widget sibling identity. The chart-shaped mouth is replaced with three checked tasks. Run `python3 docs/brand/generate.py` from the repository root to regenerate the committed assets; see [brand guidance](../docs/brand/README.md). The user-visible app name is `00Todo`; the lower-case bundle ID and API hostname are stable technical identifiers.
 

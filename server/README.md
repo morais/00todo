@@ -4,12 +4,12 @@ Cloudflare Worker with D1 storage, REST API, and a stateless MCP endpoint. Node 
 
 ## Configuration
 
-Copy `wrangler.toml.sample` to ignored `wrangler.toml`. Set a real D1 ID, `PUBLIC_ORIGIN`, `DEFAULT_TIME_ZONE`, the Apple identifiers, and the custom-domain route. The committed sample deliberately uses `api.example.com`; the production host is `api.00todo.com`.
+Copy `wrangler.toml.sample` to ignored `wrangler.toml`. Set a real D1 ID, `PUBLIC_ORIGIN`, `DEFAULT_TIME_ZONE`, the Apple identifiers, and the custom-domain route. The committed sample deliberately uses `api.example.com`.
 
 The Apple Developer setup needs:
 
 1. A primary iOS App ID with Sign in with Apple enabled. `APPLE_APP_CLIENT_ID` is its exact bundle ID.
-2. A web Services ID associated with that primary App ID. `APPLE_WEB_CLIENT_ID` is the Services ID. Register domain `api.00todo.com` and return URL `https://api.00todo.com/auth/apple/callback`.
+2. A web Services ID associated with that primary App ID. `APPLE_WEB_CLIENT_ID` is the Services ID. Register your API domain and the return URL `https://<your API host>/auth/apple/callback`.
 3. A Sign in with Apple key for the same team, with its `.p8` PEM as the `APPLE_PRIVATE_KEY` secret. Set `APPLE_TEAM_ID` and `APPLE_KEY_ID` in the ignored config. An App Store Connect API key is **not** a substitute for this key.
 
 Install Worker secrets without committing them:
@@ -35,7 +35,7 @@ For a fresh production database, `npx wrangler d1 create 00todo`, set its ID in 
 
 `POST /v1/auth/apple` accepts a native Apple identity token, one-use authorization code, and raw nonce. The Worker verifies Apple's signature, issuer, audience, time, and nonce, exchanges the code with Apple, then creates or finds a tenant by Apple's stable `sub` (never by email). It issues a 90-day opaque app credential; only its SHA-256 hash is stored. `POST /v1/auth/logout` revokes it. `POST /v1/auth/delete-account` requires a fresh Apple sign-in for the same subject, revokes the new Apple access token, and deletes that tenant's tasks, projects, OAuth state, and credentials.
 
-MCP clients use authorization-code flow with S256 PKCE, resource indicator `https://api.00todo.com/mcp`, dynamic client registration, Apple web sign-in, and an explicit consent screen. Discovery is at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`; authorization, registration and token endpoints are in the advertised metadata. MCP credentials are separate, audience-bound, scope-limited, and expire after 30 days. App credentials cannot call MCP; MCP credentials cannot call REST.
+MCP clients use authorization-code flow with S256 PKCE, resource indicator `<PUBLIC_ORIGIN>/mcp`, dynamic client registration, Apple web sign-in, and an explicit consent screen. Discovery is at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`; authorization, registration and token endpoints are in the advertised metadata. MCP credentials are separate, audience-bound, scope-limited, and expire after 30 days. App credentials cannot call MCP; MCP credentials cannot call REST.
 
 The iOS app's MCP Connections screen shows the server address and active OAuth grants. Its app-only `GET /v1/account/mcp-connections` lists grant IDs, client names, scopes, and timestamps, never tokens or hashes. `DELETE /v1/account/mcp-connections/:id` revokes one of the signed-in tenant's grants. There is no bare-token integration flow.
 
@@ -67,4 +67,4 @@ Create requests may include a client-generated UUID `id` for a task, project, or
 
 ## Checks
 
-`npm run typecheck` and `npm test` cover models and MCP behavior. A local migrated D1 smoke check also verified two-account isolation, cross-tenant project rejection, and app/MCP token separation. Production smoke checks verified health, OAuth discovery, dynamic client registration, and a valid MCP authorization request redirecting to Apple with the expected Services ID and callback. Native Apple sign-in reached the task list from TestFlight. The MCP browser consent round trip remains to be verified with an Apple web sign-in.
+`npm run typecheck` and `npm test` cover models and MCP behavior.
