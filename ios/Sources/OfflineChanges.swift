@@ -14,6 +14,25 @@ struct PendingMutation: Codable, Equatable, Identifiable {
     }
 }
 
+/// What to do with a queued change the server answered with an error.
+enum SyncFailureAction: Equatable {
+    /// The change already took effect (a retried delete).
+    case alreadyApplied
+    /// The server will never accept it; keeping it would block every later
+    /// change and retry forever.
+    case discard
+    /// Temporary: network, server error, rate limit, or expired session.
+    case retryLater
+}
+
+extension PendingMutation {
+    func actionAfterFailure(status: Int) -> SyncFailureAction {
+        if method == "DELETE" && status == 404 { return .alreadyApplied }
+        if (400..<500).contains(status) && ![401, 408, 429].contains(status) { return .discard }
+        return .retryLater
+    }
+}
+
 struct OfflineState: Codable {
     let tenantId: String
     let serverAddress: String

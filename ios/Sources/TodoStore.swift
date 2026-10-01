@@ -21,6 +21,7 @@ private struct APIError: Decodable { var error: String }
 private struct HTTPFailure: LocalizedError {
     let status: Int
     let detail: String
+    var retryAfter: TimeInterval? = nil
     var errorDescription: String? { detail }
 }
 private struct MCPConnectionsResponse: Decodable { var connections: [MCPConnection] }
@@ -54,6 +55,14 @@ struct CreatedProject {
     /// Lets an unchanged snapshot come back as 304 without the server reading
     /// every row. Cleared by any local edit, so a diverged copy is never kept.
     private var snapshotETag: String?
+    /// Set from a 429's Retry-After so the queue does not retry early.
+    private var retryNotBefore: Date?
+    /// The last change the server refused outright. The next snapshot
+    /// restores the server's version of the item.
+    private var discardedChange: String?
+    private var syncNotice: String? {
+        discardedChange.map { "A change couldn't be saved and was undone: \($0)" }
+    }
     /// The screenshot fixture is demo mode without the visible demo notice.
     private(set) var hidesDemoNotice = false
 
@@ -268,6 +277,7 @@ struct CreatedProject {
             }
         }
         if !pendingChanges.isEmpty {
+            discardedChange = nil
             guard await flushPendingChanges() else { return }
         }
         do {
@@ -275,7 +285,7 @@ struct CreatedProject {
             let (data, response) = try await exchange("/v1/snapshot", method: "GET", rawBody: nil, headers: headers)
             guard tenantId == currentTenant, token == currentToken, pendingChanges.isEmpty else { return }
             if response.statusCode == 304 {
-                message = nil
+                message = syncNotice
                 return
             }
             guard (200..<300).contains(response.statusCode) else { throw Self.failure(response, data) }
@@ -288,7 +298,7 @@ struct CreatedProject {
                 WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
             }
             await syncBadge()
-            message = nil
+            message = syncNotice
         } catch {
             if tenantId == currentTenant, token == currentToken { message = error.localizedDescription }
         }
@@ -459,23 +469,31 @@ struct CreatedProject {
 
     /// Sends queued changes without fetching a snapshot.
     func pushPendingChanges() async {
-        guard isConfigured, !isDemo, !refreshing, !pendingChanges.isEmpty else { return }
-        _ = await flushPendingChanges()
+        // Safe alongside refresh(): only one flush runs at a time, and a
+        // running flush also sends changes queued after it started.
+        guard isConfigured, !isDemo, !pendingChanges.isEmpty else { return }
+        discardedChange = nil
+        if await flushPendingChanges(), discardedChange != nil { await refresh() }
     }
 
     private func flushPendingChanges() async -> Bool {
         guard !syncing else { return false }
+        if let retryNotBefore, retryNotBefore > Date() { return false }
         let currentTenant = tenantId
         let currentToken = token
         syncing = true
         defer { syncing = false }
         while let mutation = pendingChanges.first {
+            var discarded: String?
             do {
                 _ = try await send(mutation.path, method: mutation.method, rawBody: mutation.body)
-            } catch let error as HTTPFailure where mutation.method == "DELETE" && error.status == 404 {
-                // A retried delete already took effect before the previous response was lost.
+            } catch let error as HTTPFailure where mutation.actionAfterFailure(status: error.status) != .retryLater {
+                if mutation.actionAfterFailure(status: error.status) == .discard { discarded = error.detail }
             } catch {
                 if tenantId == currentTenant, token == currentToken {
+                    if let failure = error as? HTTPFailure, let delay = failure.retryAfter {
+                        retryNotBefore = Date().addingTimeInterval(min(max(delay, 1), 3600))
+                    }
                     message = "Saved on this device; waiting to sync. \(error.localizedDescription)"
                 }
                 return false
@@ -483,14 +501,17 @@ struct CreatedProject {
             guard tenantId == currentTenant, token == currentToken,
                   pendingChanges.first?.id == mutation.id else { return false }
             pendingChanges.removeFirst()
+            if discarded != nil { snapshotETag = nil }
             do { try saveLocalState() }
             catch {
                 pendingChanges.insert(mutation, at: 0)
                 message = "Couldn't update the local sync queue: \(error.localizedDescription)"
                 return false
             }
+            if let discarded { discardedChange = discarded }
         }
-        message = nil
+        retryNotBefore = nil
+        message = syncNotice
         return true
     }
 
@@ -549,7 +570,8 @@ struct CreatedProject {
 
     private static func failure(_ response: HTTPURLResponse, _ data: Data) -> HTTPFailure {
         HTTPFailure(status: response.statusCode,
-                    detail: (try? JSONDecoder().decode(APIError.self, from: data).error) ?? "Server error \(response.statusCode)")
+                    detail: (try? JSONDecoder().decode(APIError.self, from: data).error) ?? "Server error \(response.statusCode)",
+                    retryAfter: response.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init))
     }
 
     private func exchange(_ path: String, method: String, rawBody: Data?,

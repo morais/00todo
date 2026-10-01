@@ -16,6 +16,23 @@ import Foundation
         precondition(restored.pending == [mutation])
         let body = try JSONSerialization.jsonObject(with: restored.pending[0].body!) as! [String: String]
         precondition(body["title"] == "Buy milk")
+        precondition(restored.etag == nil)
+
+        // State written before the ETag field existed still decodes.
+        var legacy = try JSONSerialization.jsonObject(with: JSONEncoder().encode(state)) as! [String: Any]
+        legacy.removeValue(forKey: "etag")
+        let legacyState = try JSONDecoder().decode(OfflineState.self, from: JSONSerialization.data(withJSONObject: legacy))
+        precondition(legacyState.etag == nil && legacyState.pending == [mutation])
+
+        let edit = try PendingMutation(method: "PATCH", path: "/v1/tasks/x", body: ["title": "Milk"])
+        let delete = try PendingMutation(method: "DELETE", path: "/v1/tasks/x")
+        precondition(delete.actionAfterFailure(status: 404) == .alreadyApplied)
+        precondition(edit.actionAfterFailure(status: 404) == .discard)
+        precondition(edit.actionAfterFailure(status: 400) == .discard)
+        precondition(edit.actionAfterFailure(status: 409) == .discard)
+        for status in [401, 408, 429, 500, 503] {
+            precondition(edit.actionAfterFailure(status: status) == .retryLater)
+        }
         print("Offline change encoding tests passed")
     }
 }
