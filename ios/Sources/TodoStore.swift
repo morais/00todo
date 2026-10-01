@@ -52,9 +52,30 @@ struct CreatedProject {
 
     private static let tokenService = "00todo.api-token"
 
+    /// Release builds only talk to the server in Info.plist. A user-entered
+    /// server would receive the Apple identity token and one-time code at
+    /// sign-in, which it could replay against the real server, so the override
+    /// exists for development builds only.
+    static var allowsCustomServer: Bool {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
+    }
+
     init() {
-        serverAddress = UserDefaults.standard.string(forKey: "serverAddress")
-            ?? (Bundle.main.object(forInfoDictionaryKey: "TodoServerBaseURL") as? String ?? "")
+        let configuredServer = Bundle.main.object(forInfoDictionaryKey: "TodoServerBaseURL") as? String ?? ""
+        let savedServer = UserDefaults.standard.string(forKey: "serverAddress")
+        serverAddress = Self.allowsCustomServer ? (savedServer ?? configuredServer) : configuredServer
+        if !Self.allowsCustomServer, let savedServer, savedServer != configuredServer {
+            // A session made against another server must not follow the user
+            // to this one.
+            UserDefaults.standard.removeObject(forKey: "serverAddress")
+            UserDefaults.standard.removeObject(forKey: "accountEmail")
+            UserDefaults.standard.removeObject(forKey: "tenantId")
+            Self.deleteToken()
+        }
         token = Self.readToken()
         accountEmail = UserDefaults.standard.string(forKey: "accountEmail")
         tenantId = UserDefaults.standard.string(forKey: "tenantId")

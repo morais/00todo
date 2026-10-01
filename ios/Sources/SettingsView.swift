@@ -15,20 +15,22 @@ struct SettingsView: View {
                     LabeledContent("Signed in as", value: store.accountEmail ?? "Apple account")
                     Button("Sign out", role: .destructive) { confirmSignOut = true }
                 }
-                Section {
-                    TextField("https://api.00todo.com", text: $address)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button("Save server") {
-                        do {
-                            try store.configureServer(address: address)
-                        } catch { errorText = error.localizedDescription }
+                if TodoStore.allowsCustomServer {
+                    Section {
+                        TextField("https://api.example.com", text: $address)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Button("Save server") {
+                            do {
+                                try store.configureServer(address: address)
+                            } catch { errorText = error.localizedDescription }
+                        }
+                    } header: {
+                        Text("Server")
+                    } footer: {
+                        Text("Changing servers signs you out. Sync pending changes first. Development builds only.")
                     }
-                } header: {
-                    Text("Server")
-                } footer: {
-                    Text("Changing servers signs you out. Sync pending changes first.")
                 }
                 Section("Sync") {
                     Button("Refresh now") { Task { await store.refresh() } }
