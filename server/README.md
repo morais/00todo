@@ -39,6 +39,8 @@ MCP clients use authorization-code flow with S256 PKCE, resource indicator `<PUB
 
 The iOS app's MCP Connections screen shows the server address and active OAuth grants. Its app-only `GET /v1/account/mcp-connections` lists grant IDs, client names, scopes, and timestamps, never tokens or hashes. `DELETE /v1/account/mcp-connections/:id` revokes one of the signed-in tenant's grants. There is no bare-token integration flow.
 
+Three Workers Rate Limiting bindings in `wrangler.toml.sample` cap traffic before D1 is touched: 600 requests a minute per IP, 20 sign-in or OAuth requests a minute per IP, and 300 authenticated requests a minute per account. Refused requests get `429` with `Retry-After: 60`. Each account is also capped at 5,000 tasks and 1,000 projects.
+
 All task/project queries include `tenant_id`, and D1 triggers prevent a task from referring to another tenant's project. A legacy tenant preserves any old local prototype data without exposing it to Apple accounts.
 
 ## REST API

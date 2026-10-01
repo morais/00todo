@@ -30,5 +30,29 @@ database_name = "00todo"
 database_id = "REPLACE_WITH_D1_DATABASE_ID"
 migrations_dir = "migrations"
 
+# Edge rate limits: counted by Cloudflare, so refused requests never reach D1
+# and limits cost no database writes. Periods must be 10 or 60 seconds, and
+# namespace ids must be unique within your Cloudflare account.
+[[ratelimits]]
+name = "SOURCE_LIMITER"   # every request, per client IP
+namespace_id = "20001"
+  [ratelimits.simple]
+  limit = 600
+  period = 60
+
+[[ratelimits]]
+name = "SIGN_IN_LIMITER"  # sign-in and OAuth routes, per client IP
+namespace_id = "20002"
+  [ratelimits.simple]
+  limit = 20
+  period = 60
+
+[[ratelimits]]
+name = "TENANT_LIMITER"   # authenticated REST and MCP requests, per account
+namespace_id = "20003"
+  [ratelimits.simple]
+  limit = 300
+  period = 60
+
 [observability]
 enabled = true

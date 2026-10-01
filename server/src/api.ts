@@ -1,6 +1,7 @@
 import { ProjectInput, ProjectPatch, ProjectWithTasksInput, TaskInput, TaskPatch, inView, projectInView, parseToday, parseTime, type Project, type ProjectView, type Task, type TaskView } from "./model";
 import { ZodError } from "zod";
 import { tenantForPrincipal, type Principal } from "./auth";
+import { capacityProblem } from "./rateLimit";
 
 export interface Env {
   DB: D1Database;
@@ -13,6 +14,9 @@ export interface Env {
   APPLE_KEY_ID?: string;
   APPLE_PRIVATE_KEY?: string;
   OAUTH_SIGNING_SECRET?: string;
+  SOURCE_LIMITER?: RateLimit;
+  SIGN_IN_LIMITER?: RateLimit;
+  TENANT_LIMITER?: RateLimit;
 }
 
 type ProjectRow = {
@@ -102,6 +106,11 @@ async function findTask(db: D1Database, id: string, tenantId: string): Promise<T
   return db.prepare("SELECT * FROM tasks WHERE id = ? AND tenant_id = ?").bind(id, tenantId).first<TaskRow>();
 }
 
+async function ensureCapacity(db: D1Database, tenantId: string, adding: { tasks?: number; projects?: number }): Promise<void> {
+  const problem = await capacityProblem(db, tenantId, adding);
+  if (problem) throw new HttpError(403, problem);
+}
+
 async function checkProjectId(db: D1Database, id: string | null, tenantId: string): Promise<void> {
   if (id !== null) ensureProject(await findProject(db, id, tenantId));
 }
@@ -155,6 +164,11 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
   if (path === "/v1/projects" && method === "POST") {
     const input = ProjectInput.parse(await body(req));
     ensureStartTime(input.startDate, input.startTime);
+    if (input.id) {
+      const existing = await findProject(env.DB, input.id, tenantId);
+      if (existing) return json({ project: project(existing) });
+    }
+    await ensureCapacity(env.DB, tenantId, { projects: 1 });
     const id = input.id ?? crypto.randomUUID();
     await env.DB.prepare(`INSERT INTO projects
       (id, tenant_id, name, notes, start_date, start_time, due_date, sort_order, created_at, updated_at)
@@ -178,6 +192,7 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
       }
       return json({ project: project(existing), tasks: savedTasks.map((item) => task(item!)) });
     }
+    await ensureCapacity(env.DB, tenantId, { projects: 1, tasks: input.tasks.length });
     const statements = [
       env.DB.prepare(`INSERT INTO projects
         (id, tenant_id, name, notes, start_date, start_time, due_date, sort_order, created_at, updated_at)
@@ -268,6 +283,7 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
     }
     ensureStartTime(input.startDate, input.startTime);
     await checkProjectId(env.DB, input.projectId, tenantId);
+    await ensureCapacity(env.DB, tenantId, { tasks: 1 });
     const id = input.id ?? crypto.randomUUID();
     await env.DB.prepare(`INSERT INTO tasks
       (id, tenant_id, title, notes, project_id, start_date, start_time, due_date, sort_order, created_at, updated_at)
