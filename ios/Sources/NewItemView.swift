@@ -18,6 +18,7 @@ private struct NewSubtask: Identifiable {
 struct NewItemView: View {
     @Environment(TodoStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var kind: NewItemKind = .task
     @State private var draftKind: NewItemKind = .task
@@ -246,7 +247,7 @@ struct NewItemView: View {
             if voice.isRecording {
                 silenceTask?.cancel()
                 silenceTask = Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(2.5))
+                    try? await Task.sleep(for: .seconds(needsMoreTime ? 6 : 2.5))
                     guard !Task.isCancelled, voice.isRecording else { return }
                     voice.stop()
                 }
@@ -273,6 +274,14 @@ struct NewItemView: View {
             draftTask?.cancel()
             voice.cancel()
         }
+    }
+
+    /// Longer pauses before dictation stops and a draft starts for people
+    /// who use VoiceOver, Switch Control, or accessibility text sizes, who
+    /// often need more time to speak or type than the defaults allow.
+    private var needsMoreTime: Bool {
+        UIAccessibility.isVoiceOverRunning || UIAccessibility.isSwitchControlRunning
+            || dynamicTypeSize.isAccessibilitySize
     }
 
     private var effectiveKind: NewItemKind { kind == .quickAdd ? draftKind : kind }
@@ -321,7 +330,7 @@ struct NewItemView: View {
         guard !requestText.isEmpty, !saving, unavailableReason == nil,
               !voice.isRecording, !voice.isPreparing, !voice.isFinishing else { return }
         draftTask = Task { @MainActor in
-            if !immediate { try? await Task.sleep(for: .milliseconds(900)) }
+            if !immediate { try? await Task.sleep(for: .seconds(needsMoreTime ? 2.5 : 0.9)) }
             guard !Task.isCancelled, draftRequestID == requestID else { return }
             await generate(requestText, requestID: requestID)
         }
