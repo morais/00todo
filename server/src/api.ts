@@ -143,11 +143,26 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
   }
 
   if (path === "/v1/snapshot" && method === "GET") {
-    const [projects, tasks] = await Promise.all([
-      env.DB.prepare("SELECT * FROM projects WHERE tenant_id = ? ORDER BY sort_order, created_at, id").bind(tenantId).all<ProjectRow>(),
-      env.DB.prepare("SELECT * FROM tasks WHERE tenant_id = ? ORDER BY sort_order, created_at, id").bind(tenantId).all<TaskRow>(),
+    // The revision is read before the rows, so a write landing in between can
+    // only make the ETag older than the data, which costs one extra download
+    // later and never hides a change.
+    const revision = await env.DB.prepare("SELECT revision FROM tenants WHERE id = ?")
+      .bind(tenantId).first<number>("revision");
+    const etag = revision === null ? null : `"r${revision}"`;
+    if (etag && req.headers.get("if-none-match") === etag) {
+      return new Response(null, { status: 304, headers: { ETag: etag, "Cache-Control": "no-store" } });
+    }
+    const [projects, tasks] = await env.DB.batch<ProjectRow | TaskRow>([
+      env.DB.prepare("SELECT * FROM projects WHERE tenant_id = ? ORDER BY sort_order, created_at, id").bind(tenantId),
+      env.DB.prepare("SELECT * FROM tasks WHERE tenant_id = ? ORDER BY sort_order, created_at, id").bind(tenantId),
     ]);
-    return json({ projects: projects.results.map(project), tasks: tasks.results.map(task), serverTime: now });
+    const response = json({
+      projects: (projects.results as ProjectRow[]).map(project),
+      tasks: (tasks.results as TaskRow[]).map(task),
+      serverTime: now,
+    });
+    if (etag) response.headers.set("ETag", etag);
+    return response;
   }
 
   if (path === "/v1/projects" && method === "GET") {

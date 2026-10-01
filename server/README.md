@@ -50,7 +50,7 @@ Authenticated routes require `Authorization: Bearer <app credential>`. `/health`
 | Method | Route | Purpose |
 | --- | --- | --- |
 | GET | `/v1/me` | Current tenant ID and optional email |
-| GET | `/v1/snapshot` | All projects and tasks for the signed-in tenant |
+| GET | `/v1/snapshot` | All projects and tasks for the signed-in tenant; returns an `ETag` and answers `304` to a matching `If-None-Match` |
 | GET/POST | `/v1/projects` | List/create projects |
 | POST | `/v1/projects-with-tasks` | Atomically create a project and up to 50 subtasks |
 | GET/PATCH/DELETE | `/v1/projects/:id` | Read/edit/delete a project |

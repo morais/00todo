@@ -51,6 +51,9 @@ struct CreatedProject {
     /// Demo mode shows sample data without an account. Nothing is persisted,
     /// queued, or sent, and widgets and the badge are left alone.
     private(set) var isDemo = false
+    /// Lets an unchanged snapshot come back as 304 without the server reading
+    /// every row. Cleared by any local edit, so a diverged copy is never kept.
+    private var snapshotETag: String?
     /// The screenshot fixture is demo mode without the visible demo notice.
     private(set) var hidesDemoNotice = false
 
@@ -164,6 +167,7 @@ struct CreatedProject {
         endDemo()
         try Self.saveToken(login.token)
         if tenantId != login.tenant.id {
+            snapshotETag = nil
             projects = []
             tasks = []
             pendingChanges = []
@@ -203,6 +207,7 @@ struct CreatedProject {
     }
 
     private func clearLocalSession() {
+        snapshotETag = nil
         token = ""
         accountEmail = nil
         tenantId = nil
@@ -266,10 +271,18 @@ struct CreatedProject {
             guard await flushPendingChanges() else { return }
         }
         do {
-            let snapshot: TodoSnapshot = try await request("/v1/snapshot")
+            let headers = snapshotETag.map { ["If-None-Match": $0] } ?? [:]
+            let (data, response) = try await exchange("/v1/snapshot", method: "GET", rawBody: nil, headers: headers)
             guard tenantId == currentTenant, token == currentToken, pendingChanges.isEmpty else { return }
+            if response.statusCode == 304 {
+                message = nil
+                return
+            }
+            guard (200..<300).contains(response.statusCode) else { throw Self.failure(response, data) }
+            let snapshot = try JSONDecoder().decode(TodoSnapshot.self, from: data)
             projects = snapshot.projects
             tasks = snapshot.tasks
+            snapshotETag = response.value(forHTTPHeaderField: "ETag")
             try saveLocalState()
             if WidgetSnapshotStore.save(widgetSnapshot) {
                 WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
@@ -425,18 +438,29 @@ struct CreatedProject {
         let oldTasks = tasks
         apply()
         pendingChanges.append(mutation)
+        let oldETag = snapshotETag
+        snapshotETag = nil
         do { try saveLocalState() }
         catch {
             projects = oldProjects
             tasks = oldTasks
             pendingChanges.removeLast()
+            snapshotETag = oldETag
             throw TodoError.server("Couldn't save this change on the device: \(error.localizedDescription)")
         }
         if WidgetSnapshotStore.save(widgetSnapshot) {
             WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshotStore.widgetKind)
         }
-        Task { await refresh() }
+        // Send the change without re-downloading everything; the next launch,
+        // foreground, or pull to refresh picks up changes made elsewhere.
+        Task { await pushPendingChanges() }
         Task { await syncBadge() }
+    }
+
+    /// Sends queued changes without fetching a snapshot.
+    func pushPendingChanges() async {
+        guard isConfigured, !isDemo, !refreshing, !pendingChanges.isEmpty else { return }
+        _ = await flushPendingChanges()
     }
 
     private func flushPendingChanges() async -> Bool {
@@ -478,6 +502,7 @@ struct CreatedProject {
             projects = state.snapshot.projects
             tasks = state.snapshot.tasks
             pendingChanges = state.pending
+            snapshotETag = state.etag
         } else if let data = try? Data(contentsOf: Self.cacheURL),
                   let snapshot = try? JSONDecoder().decode(TodoSnapshot.self, from: data) {
             projects = snapshot.projects
@@ -490,7 +515,7 @@ struct CreatedProject {
         guard let tenantId else { throw TodoError.notConfigured }
         let state = OfflineState(tenantId: tenantId, serverAddress: serverAddress,
                                  snapshot: TodoSnapshot(projects: projects, tasks: tasks, serverTime: Self.timestamp()),
-                                 pending: pendingChanges)
+                                 pending: pendingChanges, etag: snapshotETag)
         let data = try JSONEncoder().encode(state)
         let url = Self.stateURL(for: tenantId)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -517,6 +542,18 @@ struct CreatedProject {
     }
 
     private func send(_ path: String, method: String, rawBody: Data?) async throws -> Data {
+        let (data, response) = try await exchange(path, method: method, rawBody: rawBody)
+        guard (200..<300).contains(response.statusCode) else { throw Self.failure(response, data) }
+        return data
+    }
+
+    private static func failure(_ response: HTTPURLResponse, _ data: Data) -> HTTPFailure {
+        HTTPFailure(status: response.statusCode,
+                    detail: (try? JSONDecoder().decode(APIError.self, from: data).error) ?? "Server error \(response.statusCode)")
+    }
+
+    private func exchange(_ path: String, method: String, rawBody: Data?,
+                          headers: [String: String] = [:]) async throws -> (Data, HTTPURLResponse) {
         guard isConfigured else { throw TodoError.notConfigured }
         guard !isDemo else { throw TodoError.server("Sign in with Apple to use this.") }
         let requestToken = token
@@ -526,6 +563,7 @@ struct CreatedProject {
         request.setValue("Bearer \(requestToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.cachePolicy = .reloadIgnoringLocalCacheData
+        for (field, value) in headers { request.setValue(value, forHTTPHeaderField: field) }
         if let rawBody {
             request.httpBody = rawBody
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -536,11 +574,7 @@ struct CreatedProject {
             if pendingChanges.isEmpty, token == requestToken { clearLocalSession() }
             throw HTTPFailure(status: 401, detail: "Your session expired. Sign in with Apple again.")
         }
-        guard (200..<300).contains(response.statusCode) else {
-            throw HTTPFailure(status: response.statusCode,
-                              detail: (try? JSONDecoder().decode(APIError.self, from: data).error) ?? "Server error \(response.statusCode)")
-        }
-        return data
+        return (data, response)
     }
 
     private static var cacheURL: URL {

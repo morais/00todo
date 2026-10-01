@@ -19,4 +19,7 @@ struct OfflineState: Codable {
     let serverAddress: String
     var snapshot: TodoSnapshot
     var pending: [PendingMutation]
+    /// The server snapshot's ETag, kept only while the local snapshot is an
+    /// unmodified copy of it. Absent in state written by older versions.
+    var etag: String? = nil
 }

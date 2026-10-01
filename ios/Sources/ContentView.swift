@@ -306,7 +306,7 @@ struct TasksView: View {
                 now = $0
                 store.importSharedTasks()
                 Task { await store.updateCurrentBadge(at: now) }
-                if store.hasPendingChanges { Task { await store.refresh() } }
+                if store.hasPendingChanges { Task { await store.pushPendingChanges() } }
             }
             .onChange(of: scenePhase) { _, phase in if phase == .active { now = Date() } }
             .onChange(of: showProjectTasks) { _, _ in Task { await store.syncBadge() } }
