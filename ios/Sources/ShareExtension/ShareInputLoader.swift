@@ -16,6 +16,11 @@ enum ShareInputLoader {
                 }
             }
             for provider in item.attachments ?? [] {
+                if provider.hasItemConformingToTypeIdentifier(UTType.propertyList.identifier),
+                   let page = await loadWebPage(from: provider) {
+                    if titleHint == nil { titleHint = page.title }
+                    if let url = page.url { urls.append(url) }
+                }
                 if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier),
                    let url = await loadURL(from: provider) {
                     urls.append(url)
@@ -27,6 +32,21 @@ enum ShareInputLoader {
             }
         }
         return ShareTaskContent.make(titleHint: titleHint, texts: texts, urls: urls)
+    }
+
+    private static func loadWebPage(from provider: NSItemProvider) async -> (title: String, url: URL?)? {
+        await withCheckedContinuation { continuation in
+            provider.loadItem(forTypeIdentifier: UTType.propertyList.identifier, options: nil) { value, _ in
+                guard let dictionary = value as? [String: Any],
+                      let page = dictionary[NSExtensionJavaScriptPreprocessingResultsKey] as? [String: Any] else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let title = page["title"] as? String ?? ""
+                let url = (page["url"] as? String).flatMap(URL.init(string:))
+                continuation.resume(returning: (title, url))
+            }
+        }
     }
 
     private static func loadURL(from provider: NSItemProvider) async -> URL? {

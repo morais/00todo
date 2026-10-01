@@ -156,6 +156,8 @@ targets:
       - path: Sources/SharedTaskInbox.swift
       - path: Sources/AppBrand.swift
       - path: Resources/Share/PrivacyInfo.xcprivacy
+      - path: Resources/Action/SharePage.js
+        buildPhase: resources
     info:
       path: Resources/Action/Info.plist
       properties:
@@ -172,6 +174,7 @@ targets:
           NSExtensionPointIdentifier: com.apple.ui-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
           NSExtensionAttributes:
+            NSExtensionJavaScriptPreprocessingFile: SharePage
             NSExtensionActivationRule:
               NSExtensionActivationSupportsText: true
               NSExtensionActivationSupportsWebURLWithMaxCount: 1
