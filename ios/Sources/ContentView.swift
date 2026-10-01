@@ -258,11 +258,11 @@ struct TasksView: View {
                         .tag(choice)
                 }
             }
-            .navigationTitle("00Todo")
+            .navigationTitle("\(AppBrand.name)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text("00Todo")
+                    Text("\(AppBrand.name)")
                         .font(.system(size: 22, weight: .bold))
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {

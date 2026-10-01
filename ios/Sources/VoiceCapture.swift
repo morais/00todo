@@ -31,13 +31,13 @@ import Speech
         }
         guard sessionID == startedSession else { return }
         guard authorization == .authorized else {
-            errorText = "Allow Speech Recognition for 00Todo in Settings to dictate a task."
+            errorText = "Allow Speech Recognition for \(AppBrand.name) in Settings to dictate a task."
             return
         }
         let microphoneAllowed = await AVAudioApplication.requestRecordPermission()
         guard sessionID == startedSession else { return }
         guard microphoneAllowed else {
-            errorText = "Allow Microphone access for 00Todo in Settings to dictate a task."
+            errorText = "Allow Microphone access for \(AppBrand.name) in Settings to dictate a task."
             return
         }
         guard let recognizer = SFSpeechRecognizer(locale: .current), recognizer.isAvailable else {

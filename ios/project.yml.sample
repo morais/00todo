@@ -26,6 +26,7 @@ targets:
       path: Resources/App/Info.plist
       properties:
         CFBundleDisplayName: 00Todo
+        TodoAppName: 00Todo
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
@@ -77,10 +78,12 @@ targets:
     sources:
       - path: Sources/Widgets
       - path: Sources/WidgetSnapshot.swift
+      - path: Sources/AppBrand.swift
     info:
       path: Resources/Widgets/Info.plist
       properties:
         CFBundleDisplayName: 00Todo
+        TodoAppName: 00Todo
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         TodoAppGroup: group.com.example.zerozerotodo
@@ -105,11 +108,13 @@ targets:
       - path: Sources/ShareTaskContent.swift
       - path: Sources/SharedSession.swift
       - path: Sources/SharedTaskInbox.swift
+      - path: Sources/AppBrand.swift
       - path: Resources/Share/PrivacyInfo.xcprivacy
     info:
       path: Resources/Share/Info.plist
       properties:
         CFBundleDisplayName: 00Todo
+        TodoAppName: 00Todo
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         TodoAppGroup: group.com.example.zerozerotodo

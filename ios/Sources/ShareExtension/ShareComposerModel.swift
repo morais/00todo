@@ -35,7 +35,7 @@ private struct SuggestedShareTitle {
         }
         title = content.title
         notes = content.notes
-        if SharedSession.tenantId == nil { errorText = "Open 00Todo and sign in with Apple first." }
+        if SharedSession.tenantId == nil { errorText = "Open \(AppBrand.name) and sign in with Apple first." }
         let model = SystemLanguageModel.default
         guard case .available = model.availability, model.supportsLocale() else { return }
         suggesting = true

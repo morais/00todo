@@ -17,14 +17,15 @@ struct MCPConnectionsView: View {
     private var claudeConnectorURL: URL? {
         var allowed = CharacterSet.alphanumerics
         allowed.insert(charactersIn: "-._~")
-        guard let escaped = endpoint.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
-        return URL(string: "https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=00Todo&connectorUrl=\(escaped)")
+        guard let escaped = endpoint.addingPercentEncoding(withAllowedCharacters: allowed),
+              let name = AppBrand.name.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+        return URL(string: "https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=\(name)&connectorUrl=\(escaped)")
     }
 
     var body: some View {
         List {
             Section {
-                Text("Connect an assistant through MCP. It will ask you to sign in with the same Apple account as 00Todo and approve access. You never need to paste an API token.")
+                Text("Connect an assistant through MCP. It will ask you to sign in with the same Apple account as \(AppBrand.name) and approve access. You never need to paste an API token.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 MCPGuideCode(text: endpoint, label: "MCP address")
@@ -66,12 +67,12 @@ struct MCPConnectionsView: View {
             } header: {
                 Text("Connected assistants")
             } footer: {
-                Text("Disconnecting revokes 00Todo access immediately. The assistant may still show the connector until you remove it there.")
+                Text("Disconnecting revokes \(AppBrand.name) access immediately. The assistant may still show the connector until you remove it there.")
             }
 
             Section("Claude") {
-                MCPGuideStep(1, "Open Claude’s custom connectors and add 00Todo. The button below fills in the address.")
-                MCPGuideStep(2, "Connect it, then sign in to 00Todo with Apple and approve access.")
+                MCPGuideStep(1, "Open Claude’s custom connectors and add \(AppBrand.name). The button below fills in the address.")
+                MCPGuideStep(2, "Connect it, then sign in to \(AppBrand.name) with Apple and approve access.")
                 if let claudeConnectorURL {
                     Link(destination: claudeConnectorURL) {
                         Label("Connect Claude", systemImage: "arrow.up.forward.app")
@@ -86,7 +87,7 @@ struct MCPConnectionsView: View {
 
             Section("ChatGPT") {
                 MCPGuideStep(1, "On ChatGPT web, enable Developer mode in Settings → Security and login if your account or workspace allows it.")
-                MCPGuideStep(2, "Open ChatGPT Plugins, choose Add, and enter 00Todo and the MCP address below.")
+                MCPGuideStep(2, "Open ChatGPT Plugins, choose Add, and enter \(AppBrand.name) and the MCP address below.")
                 MCPGuideStep(3, "Create the connection and complete the Apple sign-in and access approval when prompted.")
                 MCPGuideCode(text: endpoint, label: "ChatGPT MCP address")
                 Link("ChatGPT MCP setup instructions", destination: URL(string: "https://developers.openai.com/plugins/deploy/connect-chatgpt")!)
@@ -94,22 +95,22 @@ struct MCPConnectionsView: View {
 
             Section("Manus") {
                 MCPGuideStep(1, "In Manus, open Settings → Integrations → Custom MCP Servers and choose Add Server.")
-                MCPGuideStep(2, "Name it 00Todo and enter this server address.")
-                MCPGuideStep(3, "Test the connection and complete Apple sign-in if Manus offers the OAuth flow. 00Todo does not provide a static API token.")
+                MCPGuideStep(2, "Name it \(AppBrand.name) and enter this server address.")
+                MCPGuideStep(3, "Test the connection and complete Apple sign-in if Manus offers the OAuth flow. \(AppBrand.name) does not provide a static API token.")
                 MCPGuideCode(text: endpoint, label: "Manus MCP address")
                 Link("Manus custom MCP instructions", destination: URL(string: "https://manus.im/docs/integrations/custom-mcp")!)
             }
 
             Section("OpenCode") {
                 MCPGuideStep(1, "Run this command to add the remote server and start OAuth.")
-                MCPGuideStep(2, "Approve 00Todo access in the browser window that opens.")
+                MCPGuideStep(2, "Approve \(AppBrand.name) access in the browser window that opens.")
                 MCPGuideCode(text: "opencode mcp add 00todo --url \(endpoint) && opencode mcp auth 00todo", label: "OpenCode command")
                 Link("OpenCode MCP instructions", destination: URL(string: "https://opencode.ai/docs/mcp-servers/")!)
             }
 
             Section("Codex") {
                 MCPGuideStep(1, "In the ChatGPT desktop app, open Settings → MCP servers → Add server.")
-                MCPGuideStep(2, "Name it 00Todo, choose Streamable HTTP, and enter this address. Save and restart.")
+                MCPGuideStep(2, "Name it \(AppBrand.name), choose Streamable HTTP, and enter this address. Save and restart.")
                 MCPGuideStep(3, "Select Authenticate and approve access with your Apple account.")
                 MCPGuideCode(text: endpoint, label: "Codex MCP address")
                 Text("Or use the Codex terminal:")
@@ -152,7 +153,7 @@ struct MCPConnectionsView: View {
             }
             Button("Cancel", role: .cancel) { selectedConnection = nil }
         } message: {
-            Text("Its access to 00Todo will stop immediately. Reconnecting requires a new Apple sign-in approval.")
+            Text("Its access to \(AppBrand.name) will stop immediately. Reconnecting requires a new Apple sign-in approval.")
         }
         .alert("MCP connections", isPresented: Binding(
             get: { errorText != nil }, set: { if !$0 { errorText = nil } }

@@ -46,7 +46,7 @@ private struct ShareComposerView: View {
                     Section { Text(error).foregroundStyle(.red) }
                 }
             }
-            .navigationTitle("Add to 00Todo")
+            .navigationTitle("Add to \(AppBrand.name)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

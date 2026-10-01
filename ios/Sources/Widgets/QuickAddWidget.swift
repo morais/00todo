@@ -58,7 +58,7 @@ private struct AvailableWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: family == .systemSmall ? 4 : 10) {
             HStack {
-                Label("00Todo", systemImage: "checkmark.square.fill")
+                Label("\(AppBrand.name)", systemImage: "checkmark.square.fill")
                     .font(family == .systemSmall ? .subheadline.bold() : .headline.bold())
                     .foregroundStyle(.white)
                 Spacer(minLength: 0)
@@ -122,7 +122,7 @@ private struct AvailableWidgetView: View {
                     Image(systemName: "mic.fill")
                         .frame(maxWidth: .infinity)
                 }
-                .accessibilityLabel("Speak to 00Todo")
+                .accessibilityLabel("Speak to \(AppBrand.name)")
                 Link(destination: textURL) {
                     Image(systemName: "plus")
                         .frame(maxWidth: .infinity)
@@ -147,7 +147,7 @@ private struct AvailableTodoWidget: Widget {
         AppIntentConfiguration(kind: kind, intent: AvailableWidgetConfiguration.self, provider: AvailableProvider()) { entry in
             AvailableWidgetView(entry: entry)
         }
-        .configurationDisplayName("00Todo Available")
+        .configurationDisplayName("\(AppBrand.name) Available")
         .description("See available items. Choose whether to expand projects in Edit Widget.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
     }

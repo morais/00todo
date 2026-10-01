@@ -58,7 +58,7 @@ struct SettingsView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
             .onAppear { address = store.serverAddress }
-            .confirmationDialog("Sign out of 00Todo?", isPresented: $confirmSignOut) {
+            .confirmationDialog("Sign out of \(AppBrand.name)?", isPresented: $confirmSignOut) {
                 Button("Sign out", role: .destructive) { Task { await store.signOut(); dismiss() } }
             } message: {
                 if store.hasPendingChanges {
@@ -66,7 +66,7 @@ struct SettingsView: View {
                 }
             }
             .sheet(isPresented: $showDelete) { DeleteAccountView() }
-            .alert("00Todo", isPresented: Binding(
+            .alert("\(AppBrand.name)", isPresented: Binding(
                 get: { errorText != nil }, set: { if !$0 { errorText = nil } }
             )) { Button("OK", role: .cancel) {} } message: { Text(errorText ?? "") }
         }
