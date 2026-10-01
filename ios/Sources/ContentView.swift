@@ -305,6 +305,7 @@ struct TasksView: View {
                     .tint(showProjectTasks ? .accentColor : .secondary)
                     .accessibilityLabel("Expand projects")
                     .accessibilityValue(showProjectTasks ? "On" : "Off")
+                    .accessibilityAddTraits(.isToggle)
                     .help(showProjectTasks ? "Show projects as folders" : "Show tasks within projects")
                     Button { showNewItem = true } label: { Image(systemName: "plus") }
                         .accessibilityLabel("Add task, project, or Quick Add")

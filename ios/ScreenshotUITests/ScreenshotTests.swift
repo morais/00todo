@@ -28,7 +28,8 @@ final class ScreenshotTests: XCTestCase {
         capture("02-upcoming")
 
         available.tap()
-        app.buttons["Expand projects"].tap()
+        // Exposed as a toggle (switch), not a plain button.
+        app.switches["Expand projects"].firstMatch.tap()
         let shopping = app.staticTexts["Weekend shopping"].firstMatch
         XCTAssertTrue(shopping.waitForExistence(timeout: 10))
         shopping.tap()
