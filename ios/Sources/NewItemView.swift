@@ -129,14 +129,6 @@ struct NewItemView: View {
             }
 
             Section {
-                Toggle("Someday", isOn: $someday)
-            } footer: {
-                Text(effectiveKind == .task && store.projects.first(where: { $0.id == projectId })?.someday == true
-                     ? "A task in a Someday project stays there until the project is moved back."
-                     : "Keep this out of Available and Upcoming until you move it back.")
-            }
-
-            Section {
                 StartScheduleFields(hasStart: $hasStart, start: $start,
                                     hasStartTime: $hasStartTime, startTime: $startTime)
             } footer: {
@@ -150,6 +142,14 @@ struct NewItemView: View {
                 if hasDue {
                     DatePicker("Due", selection: $due, displayedComponents: .date)
                 }
+            }
+
+            Section {
+                Toggle("Someday", isOn: $someday)
+            } footer: {
+                Text(effectiveKind == .task && store.projects.first(where: { $0.id == projectId })?.someday == true
+                     ? "A task in a Someday project stays there until the project is moved back."
+                     : "Keep this out of Available and Upcoming until you move it back.")
             }
 
             if effectiveKind == .task {

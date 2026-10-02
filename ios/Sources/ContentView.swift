@@ -243,14 +243,16 @@ struct TasksView: View {
             } label: {
                 ProjectRow(
                     project: project,
-                    openCount: store.tasks.filter { $0.projectId == project.id && $0.completedAt == nil }.count
+                    openCount: store.tasks.filter { $0.projectId == project.id && $0.completedAt == nil }.count,
+                    showsSomedayLabel: filter != .someday
                 ) { Task { await store.toggle(project) } }
             }
         case .task(let task):
             NavigationLink {
                 TaskEditor(task: task)
             } label: {
-                TaskRow(task: task, project: store.projects.first { $0.id == task.projectId }) { Task { await store.toggle(task) } }
+                TaskRow(task: task, project: store.projects.first { $0.id == task.projectId },
+                        showsSomedayLabel: filter != .someday) { Task { await store.toggle(task) } }
             }
         }
     }
@@ -367,6 +369,7 @@ struct TasksView: View {
 struct TaskRow: View {
     let task: TodoTask
     let project: TodoProject?
+    var showsSomedayLabel = true
     let onToggle: () -> Void
 
     private var effectiveStart: (date: String, time: String?)? {
@@ -379,6 +382,13 @@ struct TaskRow: View {
         case (let own?, let parent?):
             return "\(own.date)T\(own.time ?? "00:00")" >= "\(parent.date)T\(parent.time ?? "00:00")" ? own : parent
         }
+    }
+
+    private var hasVisibleDetails: Bool {
+        project != nil
+            || (showsSomedayLabel && (task.someday == true || project?.someday == true))
+            || effectiveStart.map { !TodoDates.hasStarted(startDate: $0.date, startTime: $0.time, at: Date()) } == true
+            || task.dueDate != nil
     }
 
     var body: some View {
@@ -394,23 +404,25 @@ struct TaskRow: View {
                 Text(task.title)
                     .foregroundStyle(task.completedAt == nil ? .primary : .secondary)
                     .strikethrough(task.completedAt != nil)
-                RowDetails {
-                    if let project {
-                        Label(project.name, systemImage: "folder")
+                if hasVisibleDetails {
+                    RowDetails {
+                        if let project {
+                            Label(project.name, systemImage: "folder")
+                        }
+                        if showsSomedayLabel && (task.someday == true || project?.someday == true) {
+                            Label("Someday", systemImage: "tray")
+                        }
+                        if let start = effectiveStart,
+                           !TodoDates.hasStarted(startDate: start.date, startTime: start.time, at: Date()) {
+                            Text(TodoDates.startLabel(date: start.date, time: start.time))
+                        }
+                        if let dueDate = task.dueDate {
+                            DueLabel(dueDate: dueDate, isOpen: task.completedAt == nil)
+                        }
                     }
-                    if task.someday == true || project?.someday == true {
-                        Label("Someday", systemImage: "tray")
-                    }
-                    if let start = effectiveStart,
-                       !TodoDates.hasStarted(startDate: start.date, startTime: start.time, at: Date()) {
-                        Text(TodoDates.startLabel(date: start.date, time: start.time))
-                    }
-                    if let dueDate = task.dueDate {
-                        DueLabel(dueDate: dueDate, isOpen: task.completedAt == nil)
-                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 3)

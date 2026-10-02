@@ -65,14 +65,6 @@ struct TaskEditor: View {
             }
 
             Section {
-                Toggle("Someday", isOn: $draft.someday)
-            } footer: {
-                Text(store.projects.first(where: { $0.id == draft.projectId })?.someday == true
-                     ? "This task stays in Someday while its project is there, even if this switch is off."
-                     : "Keep this out of Available and Upcoming until you move it back.")
-            }
-
-            Section {
                 StartScheduleFields(hasStart: $draft.hasStart, start: $draft.start,
                                     hasStartTime: $draft.hasStartTime, startTime: $draft.startTime)
             } footer: {
@@ -84,6 +76,14 @@ struct TaskEditor: View {
                 if draft.hasDue {
                     DatePicker("Due", selection: $draft.due, displayedComponents: .date)
                 }
+            }
+
+            Section {
+                Toggle("Someday", isOn: $draft.someday)
+            } footer: {
+                Text(store.projects.first(where: { $0.id == draft.projectId })?.someday == true
+                     ? "This task stays in Someday while its project is there, even if this switch is off."
+                     : "Keep this out of Available and Upcoming until you move it back.")
             }
 
             Section {

@@ -38,6 +38,7 @@ struct ProjectDraft {
 struct ProjectRow: View {
     let project: TodoProject
     let openCount: Int
+    var showsSomedayLabel = true
     let onToggle: () -> Void
 
     var body: some View {
@@ -61,7 +62,7 @@ struct ProjectRow: View {
                 }
                 RowDetails {
                     Text("\(openCount) \(openCount == 1 ? "subtask" : "subtasks")")
-                    if project.someday == true { Label("Someday", systemImage: "tray") }
+                    if showsSomedayLabel && project.someday == true { Label("Someday", systemImage: "tray") }
                     if let startDate = project.startDate,
                        !TodoDates.hasStarted(startDate: startDate, startTime: project.startTime, at: Date()) {
                         Text(TodoDates.startLabel(date: startDate, time: project.startTime))
@@ -106,11 +107,6 @@ struct ProjectEditor: View {
                 NotesLinkButtons(notes: draft.notes)
             }
             Section {
-                Toggle("Someday", isOn: $draft.someday)
-            } footer: {
-                Text("Keep this project and its tasks out of Available and Upcoming until you move it back.")
-            }
-            Section {
                 StartScheduleFields(hasStart: $draft.hasStart, start: $draft.start,
                                     hasStartTime: $draft.hasStartTime, startTime: $draft.startTime)
             } footer: {
@@ -121,6 +117,11 @@ struct ProjectEditor: View {
                 if draft.hasDue {
                     DatePicker("Due", selection: $draft.due, displayedComponents: .date)
                 }
+            }
+            Section {
+                Toggle("Someday", isOn: $draft.someday)
+            } footer: {
+                Text("Keep this project and its tasks out of Available and Upcoming until you move it back.")
             }
             if let project {
                 Section {
@@ -271,7 +272,7 @@ struct ProjectTasksView: View {
                             NavigationLink {
                                 TaskEditor(task: task)
                             } label: {
-                                TaskRow(task: task, project: nil) { Task { await store.toggle(task) } }
+                                TaskRow(task: task, project: nil, showsSomedayLabel: false) { Task { await store.toggle(task) } }
                             }
                         }
                     }
