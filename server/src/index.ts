@@ -2,6 +2,10 @@ import { routeApi, json, type Env } from "./api";
 import { routeMcp } from "./mcp";
 import { authenticate, publicOrigin } from "./auth";
 import { deleteAccount, signInWithApple, signOut } from "./appAuth";
+import {
+  dashboard, dashboardAppleCallback, dashboardAppleLogin, dashboardLogin,
+  dashboardLogout, dashboardReviewLogin, isDashboardAppleState,
+} from "./dashboard";
 import { disconnectMcpConnection, listMcpConnections } from "./mcpConnections";
 import { maybeSweep, sweepExpiredAuthData } from "./cleanup";
 import { openAIAppsChallenge } from "./openAIAppsChallenge";
@@ -16,6 +20,7 @@ const signInRoutes = new Set([
   "/v1/auth/apple", "/v1/auth/delete-account", "/oauth/register", "/auth/apple/callback",
   "/oauth/consent", "/oauth/token",
   "/auth/review/callback",
+  "/dashboard/login/review", "/dashboard/logout",
 ]);
 
 export default {
@@ -27,7 +32,8 @@ export default {
     if (path === "/.well-known/openai-apps-challenge" && (method === "GET" || method === "HEAD")) {
       return openAIAppsChallenge(req, env);
     }
-    if (signInRoutes.has(path) && method === "POST" || path === "/oauth/authorize") {
+    if ((signInRoutes.has(path) && method === "POST") || path === "/oauth/authorize"
+      || path === "/dashboard/login/apple") {
       if (!(await signInAllowed(env, req))) return tooManyRequests();
       maybeSweep(env, ctx);
     }
@@ -37,11 +43,23 @@ export default {
     if (path === "/oauth/register" && method === "POST") return registerClient(req, env);
     if (path === "/oauth/authorize" && method === "GET") return beginAuthorization(req, env);
     if (path === "/oauth/login" && method === "GET") return showReviewLogin(req, env);
-    if (path === "/auth/apple/callback" && method === "POST") return appleCallback(req, env);
+    if (path === "/auth/apple/callback" && method === "POST") {
+      if (Number(req.headers.get("content-length") ?? 0) > 16000) return json({ error: "Request too large" }, 413);
+      const raw = await req.clone().text();
+      if (raw.length > 16000) return json({ error: "Request too large" }, 413);
+      const form = new URLSearchParams(raw);
+      return isDashboardAppleState(form.get("state"))
+        ? dashboardAppleCallback(req, env, form) : appleCallback(req, env);
+    }
     if (path === "/auth/review/callback" && method === "POST") return reviewCallback(req, env);
     if (path === "/oauth/consent" && method === "GET") return showConsent(req, env);
     if (path === "/oauth/consent" && method === "POST") return decideConsent(req, env);
     if (path === "/oauth/token" && method === "POST") return exchangeCode(req, env);
+    if ((path === "/dashboard" || path === "/dashboard/") && method === "GET") return dashboard(req, env);
+    if (path === "/dashboard/login" && method === "GET") return dashboardLogin(req, env);
+    if (path === "/dashboard/login/apple" && method === "GET") return dashboardAppleLogin(env);
+    if (path === "/dashboard/login/review" && method === "POST") return dashboardReviewLogin(req, env);
+    if (path === "/dashboard/logout" && method === "POST") return dashboardLogout(req, env);
     if (path === "/v1/auth/apple" && method === "POST") return signInWithApple(req, env);
     if (path === "/mcp") {
       const principal = await authenticate(req, env, "mcp");

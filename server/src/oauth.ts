@@ -27,6 +27,16 @@ function reviewTenantIds(env: Env): Set<string> {
   return new Set((env.REVIEW_TENANT_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean));
 }
 
+export async function reviewTenantForAccessCode(env: Env, accessCode: string): Promise<string | null> {
+  const allowed = reviewTenantIds(env);
+  if (!allowed.size || !/^tt_review_[A-Za-z0-9_-]{43}$/.test(accessCode)) return null;
+  const credential = await env.DB.prepare(`SELECT tenant_id, expires_at, revoked_at
+    FROM review_credentials WHERE token_hash = ?`)
+    .bind(await sha256Hex(accessCode)).first<ReviewCredential>();
+  return credential && !credential.revoked_at && credential.expires_at > new Date().toISOString()
+    && allowed.has(credential.tenant_id) ? credential.tenant_id : null;
+}
+
 function configured(env: Env): boolean {
   return Boolean(env.OAUTH_SIGNING_SECRET && env.OAUTH_SIGNING_SECRET.length >= 32
     && env.APPLE_WEB_CLIENT_ID && env.APPLE_WEB_REDIRECT_URI && env.APPLE_PRIVATE_KEY);
@@ -252,7 +262,7 @@ export async function beginAuthorization(req: Request, env: Env): Promise<Respon
   return appleAuthorize(env, flowId, nonce);
 }
 
-function appleAuthorize(env: Env, flowId: string, nonce: string): Response {
+export function appleAuthorize(env: Env, flowId: string, nonce: string): Response {
   const apple = new URL("https://appleid.apple.com/auth/authorize");
   apple.search = new URLSearchParams({
     client_id: env.APPLE_WEB_CLIENT_ID!, redirect_uri: env.APPLE_WEB_REDIRECT_URI!,
@@ -283,17 +293,14 @@ export async function reviewCallback(req: Request, env: Env): Promise<Response> 
   if (!flow || flow.tenant_id || !/^tt_review_[A-Za-z0-9_-]{43}$/.test(accessCode)) {
     return html(env, "<h1>Invalid or expired review access</h1>", 401);
   }
-  const credential = await env.DB.prepare(`SELECT tenant_id, expires_at, revoked_at
-    FROM review_credentials WHERE token_hash = ?`)
-    .bind(await sha256Hex(accessCode)).first<ReviewCredential>();
-  if (!credential || credential.revoked_at || credential.expires_at <= new Date().toISOString()
-    || !allowed.has(credential.tenant_id)) {
+  const tenantId = await reviewTenantForAccessCode(env, accessCode);
+  if (!tenantId) {
     return html(env, "<h1>Invalid or expired review access</h1>", 401);
   }
   const consentSecret = randomToken(24);
   const result = await env.DB.prepare(`UPDATE oauth_flows SET tenant_id = ?, consent_hash = ?
     WHERE id_hash = ? AND tenant_id IS NULL AND expires_at > ?`)
-    .bind(credential.tenant_id, await sha256Hex(consentSecret), flow.id_hash, new Date().toISOString()).run();
+    .bind(tenantId, await sha256Hex(consentSecret), flow.id_hash, new Date().toISOString()).run();
   if (result.meta.changes !== 1) return html(env, "<h1>Sign-in was already used</h1>", 400);
   return consentRedirect(env, flowId, consentSecret);
 }
