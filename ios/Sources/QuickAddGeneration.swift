@@ -22,6 +22,8 @@ struct GeneratedQuickAdd {
     var startTime: String
     @Guide(description: "Due date as YYYY-MM-DD if specified, otherwise empty")
     var dueDate: String
+    @Guide(description: "True only if the user explicitly wants this task or project on a Someday/maybe list, to consider later without scheduling it. A future start date alone is not Someday.")
+    var someday: Bool
     @Guide(description: "For a project, distinct subtasks explicitly named by the user; never repeat the project title. For a task, empty.", .maximumCount(50))
     var subtasks: [String]
 }

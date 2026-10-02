@@ -9,6 +9,7 @@ struct ProjectDraft {
     var startTime = Date()
     var hasDue = false
     var due = Date()
+    var someday = false
 
     init(project: TodoProject? = nil) {
         if let project {
@@ -20,6 +21,7 @@ struct ProjectDraft {
             startTime = TodoDates.timeDate(from: project.startTime)
             hasDue = project.dueDate != nil
             due = TodoDates.date(from: project.dueDate)
+            someday = project.someday == true
         }
     }
 
@@ -28,7 +30,8 @@ struct ProjectDraft {
          "notes": notes,
          "startDate": hasStart ? TodoDates.string(from: start) : NSNull(),
          "startTime": hasStart && hasStartTime ? TodoDates.timeString(from: startTime) : NSNull(),
-         "dueDate": hasDue ? TodoDates.string(from: due) : NSNull()]
+         "dueDate": hasDue ? TodoDates.string(from: due) : NSNull(),
+         "someday": someday]
     }
 }
 
@@ -58,6 +61,7 @@ struct ProjectRow: View {
                 }
                 RowDetails {
                     Text("\(openCount) \(openCount == 1 ? "subtask" : "subtasks")")
+                    if project.someday == true { Label("Someday", systemImage: "tray") }
                     if let startDate = project.startDate,
                        !TodoDates.hasStarted(startDate: startDate, startTime: project.startTime, at: Date()) {
                         Text(TodoDates.startLabel(date: startDate, time: project.startTime))
@@ -100,6 +104,11 @@ struct ProjectEditor: View {
                     .frame(minHeight: 90)
                     .accessibilityLabel("Notes")
                 NotesLinkButtons(notes: draft.notes)
+            }
+            Section {
+                Toggle("Someday", isOn: $draft.someday)
+            } footer: {
+                Text("Keep this project and its tasks out of Available and Upcoming until you move it back.")
             }
             Section {
                 StartScheduleFields(hasStart: $draft.hasStart, start: $draft.start,
@@ -196,12 +205,22 @@ struct ProjectTasksView: View {
 
     private var upcomingItems: [TodoTask] {
         let parent = store.projects.first(where: { $0.id == project.id }) ?? project
-        let parentIsUpcoming = !parent.isAvailable(at: now) && parent.completedAt == nil
+        let parentIsUpcoming = !parent.isAvailable(at: now) && parent.completedAt == nil && parent.someday != true
         return store.tasks.filter {
-            $0.projectId == project.id && $0.completedAt == nil && parent.completedAt == nil
+            $0.projectId == project.id && $0.completedAt == nil && $0.someday != true
+                && parent.completedAt == nil && parent.someday != true
                 && (!$0.isAvailable(at: now) || parentIsUpcoming)
         }
             .sorted { "\($0.startDate ?? "9999-12-31")T\($0.startTime ?? "00:00")" < "\($1.startDate ?? "9999-12-31")T\($1.startTime ?? "00:00")" }
+    }
+
+    private var somedayItems: [TodoTask] {
+        let parent = store.projects.first(where: { $0.id == project.id }) ?? project
+        return store.tasks.filter {
+            $0.projectId == project.id && $0.completedAt == nil && parent.completedAt == nil
+                && ($0.someday == true || parent.someday == true)
+        }
+        .sorted { $0.sortOrder == $1.sortOrder ? $0.createdAt < $1.createdAt : $0.sortOrder < $1.sortOrder }
     }
 
     private var completedItems: [TodoTask] {
@@ -219,7 +238,7 @@ struct ProjectTasksView: View {
                     NotesLinkButtons(notes: visibleNotes)
                 }
             }
-            if items.isEmpty && upcomingItems.isEmpty && completedItems.isEmpty {
+            if items.isEmpty && upcomingItems.isEmpty && somedayItems.isEmpty && completedItems.isEmpty {
                 ContentUnavailableView("No tasks", systemImage: "checklist")
             } else {
                 if !items.isEmpty {
@@ -242,6 +261,17 @@ struct ProjectTasksView: View {
                                 } label: {
                                     TaskRow(task: task, project: nil) { Task { await store.toggle(task) } }
                                 }
+                            }
+                        }
+                    }
+                }
+                if !somedayItems.isEmpty {
+                    Section("Someday") {
+                        ForEach(somedayItems) { task in
+                            NavigationLink {
+                                TaskEditor(task: task)
+                            } label: {
+                                TaskRow(task: task, project: nil) { Task { await store.toggle(task) } }
                             }
                         }
                     }

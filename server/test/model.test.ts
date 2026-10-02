@@ -4,11 +4,11 @@ import { dateInZone, timeInZone } from "../src/api";
 
 const sample: Task = {
   id: "task", title: "Buy milk", notes: "", projectId: null,
-  startDate: null, startTime: null, dueDate: null, completedAt: null,
+  startDate: null, startTime: null, dueDate: null, someday: false, completedAt: null,
   sortOrder: 0, createdAt: "2026-09-27T12:00:00Z", updatedAt: "2026-09-27T12:00:00Z",
 };
 const sampleProject: Project = {
-  id: "project", name: "Shopping", notes: "", startDate: null, startTime: null, dueDate: null,
+  id: "project", name: "Shopping", notes: "", startDate: null, startTime: null, dueDate: null, someday: false,
   completedAt: null, sortOrder: 0,
   createdAt: "2026-09-27T12:00:00Z", updatedAt: "2026-09-27T12:00:00Z",
 };
@@ -19,6 +19,22 @@ describe("task visibility", () => {
     expect(inView(task, "available", "2026-09-27")).toBe(false);
     expect(inView(task, "upcoming", "2026-09-27")).toBe(true);
     expect(inView(task, "available", "2026-10-01")).toBe(true);
+  });
+
+  it("holds Someday items outside legacy views until explicitly moved back", () => {
+    const heldTask = { ...sample, someday: true, startDate: "2026-09-01" };
+    const heldProject = { ...sampleProject, someday: true, startDate: "2026-09-01" };
+    for (const view of ["available", "upcoming", "all"] as const) {
+      expect(inView(heldTask, view, "2026-10-02")).toBe(false);
+      expect(projectInView(heldProject, view, "2026-10-02")).toBe(false);
+      expect(inView(sample, view, "2026-10-02", null, null, "12:00", null, true)).toBe(false);
+    }
+    expect(inView(heldTask, "someday", "2026-10-02")).toBe(true);
+    expect(projectInView(heldProject, "someday", "2026-10-02")).toBe(true);
+    expect(inView(sample, "someday", "2026-10-02", null, null, "12:00", null, true)).toBe(true);
+    expect(inView({ ...heldTask, someday: false }, "available", "2026-10-02")).toBe(true);
+    expect(projectInView({ ...heldProject, someday: false }, "available", "2026-10-02")).toBe(true);
+    expect(inView({ ...heldTask, completedAt: "2026-10-02T12:00:00Z" }, "someday", "2026-10-02")).toBe(false);
   });
 
   it("keeps same-day timed starts Upcoming until their start time", () => {
@@ -66,16 +82,19 @@ describe("task visibility", () => {
   it("validates project dates and keeps partial updates partial", () => {
     expect(ProjectInput.safeParse({ name: "Shopping", startDate: "2026-02-30" }).success).toBe(false);
     expect(ProjectInput.parse({ name: "Shopping", notes: "Groceries", sortOrder: 2 })).toMatchObject({
-      name: "Shopping", notes: "Groceries", sortOrder: 2, startDate: null, startTime: null, dueDate: null,
+      name: "Shopping", notes: "Groceries", sortOrder: 2, startDate: null, startTime: null, dueDate: null, someday: false,
     });
     expect(ProjectPatch.parse({ dueDate: null })).toEqual({ dueDate: null });
     expect(ProjectPatch.parse({ completed: true })).toEqual({ completed: true });
+    expect(ProjectPatch.parse({ someday: true })).toEqual({ someday: true });
   });
 
   it("rejects impossible calendar dates", () => {
     expect(TaskInput.safeParse({ title: "x", startDate: "2026-02-30" }).success).toBe(false);
     expect(TaskInput.safeParse({ title: "x", startDate: "2026-09-29", startTime: "24:00" }).success).toBe(false);
     expect(TaskInput.parse({ title: "x", startDate: "2026-09-29", startTime: "09:30" }).startTime).toBe("09:30");
+    expect(TaskInput.parse({ title: "x" }).someday).toBe(false);
+    expect(TaskPatch.parse({ someday: true })).toEqual({ someday: true });
   });
 
   it("validates an entire project and subtask batch before writing", () => {

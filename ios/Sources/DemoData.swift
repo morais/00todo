@@ -13,6 +13,8 @@ enum DemoDataCatalog {
     static let flowersTitle = "Order birthday flowers"
     static let packingTitle = "Prepare travel packing list"
     static let coffeeTitle = "Confirm coffee catch-up"
+    static let somedayProjectName = "Explore a cycling holiday"
+    static let somedayTaskTitle = "Learn to make sourdough"
 
     /// Sample tasks and projects for demo mode and the screenshot fixture.
     /// They live only in memory and are never sent to the server.
@@ -21,22 +23,26 @@ enum DemoDataCatalog {
             TodoDates.string(from: Calendar.current.date(byAdding: .day, value: offset, to: now) ?? now)
         }
         let created = "2026-10-01T09:41:00Z"
-        func project(_ id: String, _ name: String, _ notes: String, _ start: String?, _ due: String?) -> TodoProject {
+        func project(_ id: String, _ name: String, _ notes: String, _ start: String?, _ due: String?,
+                     someday: Bool = false) -> TodoProject {
             TodoProject(id: id, name: name, notes: notes, startDate: start, startTime: nil,
-                        dueDate: due, completedAt: nil, sortOrder: 0, createdAt: created, updatedAt: created)
+                        dueDate: due, someday: someday, completedAt: nil,
+                        sortOrder: 0, createdAt: created, updatedAt: created)
         }
         func task(_ id: String, _ title: String, _ notes: String = "", projectId: String? = nil,
-                  start: String? = nil, due: String? = nil, completed: Bool = false,
+                  start: String? = nil, due: String? = nil, someday: Bool = false, completed: Bool = false,
                   order: Int = 0) -> TodoTask {
             TodoTask(id: id, title: title, notes: notes, projectId: projectId,
-                     startDate: start, startTime: nil, dueDate: due,
+                     startDate: start, startTime: nil, dueDate: due, someday: someday,
                      completedAt: completed ? created : nil, sortOrder: order,
                      createdAt: created, updatedAt: created)
         }
         let shoppingID = "00000000-0000-4000-8000-000000000001"
+        let somedayID = "00000000-0000-4000-8000-000000000003"
         return TodoSnapshot(projects: [
             project(shoppingID, shoppingName, shoppingNotes, nil, day(2)),
-            project("00000000-0000-4000-8000-000000000002", weekendName, weekendNotes, day(7), day(14))
+            project("00000000-0000-4000-8000-000000000002", weekendName, weekendNotes, day(7), day(14)),
+            project(somedayID, somedayProjectName, "Ideas for a future trip.", nil, nil, someday: true)
         ], tasks: [
             task("00000000-0000-4000-8000-000000000011", shoppingTasks[0], projectId: shoppingID, order: 1),
             task("00000000-0000-4000-8000-000000000012", shoppingTasks[1], projectId: shoppingID, order: 2),
@@ -46,7 +52,9 @@ enum DemoDataCatalog {
             task("00000000-0000-4000-8000-000000000016", appointmentTitle, start: day(1), due: day(7)),
             task("00000000-0000-4000-8000-000000000017", flowersTitle, start: day(2)),
             task("00000000-0000-4000-8000-000000000018", packingTitle, start: day(10)),
-            task("00000000-0000-4000-8000-000000000019", coffeeTitle, completed: true)
+            task("00000000-0000-4000-8000-000000000019", coffeeTitle, completed: true),
+            task("00000000-0000-4000-8000-000000000020", somedayTaskTitle, someday: true),
+            task("00000000-0000-4000-8000-000000000021", "Research routes", projectId: somedayID)
         ], serverTime: created)
     }
 }

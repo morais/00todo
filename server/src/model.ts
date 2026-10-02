@@ -13,6 +13,7 @@ export const ProjectInput = z.strictObject({
   startDate: dateOnly.nullable().default(null),
   startTime: timeOnly.nullable().default(null),
   dueDate: dateOnly.nullable().default(null),
+  someday: z.boolean().default(false),
   sortOrder: z.number().int().min(-1000000).max(1000000).default(0),
 });
 
@@ -22,6 +23,7 @@ export const ProjectPatch = z.strictObject({
   startDate: dateOnly.nullable().optional(),
   startTime: timeOnly.nullable().optional(),
   dueDate: dateOnly.nullable().optional(),
+  someday: z.boolean().optional(),
   sortOrder: z.number().int().min(-1000000).max(1000000).optional(),
   completed: z.boolean().optional(),
 });
@@ -34,6 +36,7 @@ export const TaskInput = z.strictObject({
   startDate: dateOnly.nullable().default(null),
   startTime: timeOnly.nullable().default(null),
   dueDate: dateOnly.nullable().default(null),
+  someday: z.boolean().default(false),
   sortOrder: z.number().int().min(-1000000).max(1000000).default(0),
 });
 
@@ -49,6 +52,7 @@ export const TaskPatch = z.strictObject({
   startDate: dateOnly.nullable().optional(),
   startTime: timeOnly.nullable().optional(),
   dueDate: dateOnly.nullable().optional(),
+  someday: z.boolean().optional(),
   sortOrder: z.number().int().min(-1000000).max(1000000).optional(),
   completed: z.boolean().optional(),
 });
@@ -61,6 +65,7 @@ export type Task = {
   startDate: string | null;
   startTime: string | null;
   dueDate: string | null;
+  someday: boolean;
   completedAt: string | null;
   sortOrder: number;
   createdAt: string;
@@ -74,20 +79,23 @@ export type Project = {
   startDate: string | null;
   startTime: string | null;
   dueDate: string | null;
+  someday: boolean;
   completedAt: string | null;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
 };
 
-export type TaskView = "available" | "upcoming" | "completed" | "all";
-export type ProjectView = "available" | "upcoming" | "completed" | "all";
+export type TaskView = "available" | "upcoming" | "someday" | "completed" | "all";
+export type ProjectView = "available" | "upcoming" | "someday" | "completed" | "all";
 
 export function startsLater(startDate: string | null, startTime: string | null, today: string, nowTime = "23:59"): boolean {
   return startDate !== null && (startDate > today || (startDate === today && startTime !== null && startTime > nowTime));
 }
 
 export function projectInView(project: Project, view: ProjectView, today: string, nowTime = "23:59"): boolean {
+  if (view === "someday") return project.completedAt === null && project.someday;
+  if (project.someday) return false;
   if (view === "all") return true;
   if (view === "completed") return project.completedAt !== null;
   if (project.completedAt !== null) return false;
@@ -95,7 +103,9 @@ export function projectInView(project: Project, view: ProjectView, today: string
   return view === "upcoming" ? future : !future;
 }
 
-export function inView(task: Task, view: TaskView, today: string, projectStartDate: string | null = null, projectCompletedAt: string | null = null, nowTime = "23:59", projectStartTime: string | null = null): boolean {
+export function inView(task: Task, view: TaskView, today: string, projectStartDate: string | null = null, projectCompletedAt: string | null = null, nowTime = "23:59", projectStartTime: string | null = null, projectSomeday = false): boolean {
+  if (view === "someday") return task.completedAt === null && projectCompletedAt === null && (task.someday || projectSomeday);
+  if (task.someday || projectSomeday) return false;
   if (view === "all") return true;
   if (view === "completed") return task.completedAt !== null;
   if (task.completedAt !== null || projectCompletedAt !== null) return false;

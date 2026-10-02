@@ -10,6 +10,7 @@ struct TaskDraft {
     var startTime = Date()
     var hasDue = false
     var due = Date()
+    var someday = false
 
     init(task: TodoTask? = nil, projectId: String? = nil) {
         self.projectId = task?.projectId ?? projectId
@@ -22,6 +23,7 @@ struct TaskDraft {
             startTime = TodoDates.timeDate(from: task.startTime)
             hasDue = task.dueDate != nil
             due = TodoDates.date(from: task.dueDate)
+            someday = task.someday == true
         }
     }
 
@@ -31,7 +33,8 @@ struct TaskDraft {
          "projectId": projectId as Any? ?? NSNull(),
          "startDate": hasStart ? TodoDates.string(from: start) : NSNull(),
          "startTime": hasStart && hasStartTime ? TodoDates.timeString(from: startTime) : NSNull(),
-         "dueDate": hasDue ? TodoDates.string(from: due) : NSNull()]
+         "dueDate": hasDue ? TodoDates.string(from: due) : NSNull(),
+         "someday": someday]
     }
 }
 
@@ -59,6 +62,14 @@ struct TaskEditor: View {
                     .frame(minHeight: 90)
                     .accessibilityLabel("Notes")
                 NotesLinkButtons(notes: draft.notes)
+            }
+
+            Section {
+                Toggle("Someday", isOn: $draft.someday)
+            } footer: {
+                Text(store.projects.first(where: { $0.id == draft.projectId })?.someday == true
+                     ? "This task stays in Someday while its project is there, even if this switch is off."
+                     : "Keep this out of Available and Upcoming until you move it back.")
             }
 
             Section {

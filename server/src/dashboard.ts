@@ -246,12 +246,12 @@ export async function dashboard(req: Request, env: Env): Promise<Response> {
   if (!(await tenantAllowed(env, session.tenantId))) return tooManyRequests();
   const [projectsResult, tasksResult] = await Promise.all([
     env.DB.prepare(`SELECT id, name, start_date, start_time, due_date, sort_order, created_at
-      FROM projects WHERE tenant_id = ? AND completed_at IS NULL ORDER BY sort_order, created_at, id`)
+      FROM projects WHERE tenant_id = ? AND completed_at IS NULL AND someday = 0 ORDER BY sort_order, created_at, id`)
       .bind(session.tenantId).all<ProjectRow>(),
     env.DB.prepare(`SELECT t.title, t.project_id, t.start_date, t.start_time, t.due_date, t.sort_order, t.created_at
       FROM tasks t LEFT JOIN projects p ON p.id = t.project_id AND p.tenant_id = t.tenant_id
-      WHERE t.tenant_id = ? AND t.completed_at IS NULL
-        AND (t.project_id IS NULL OR (p.id IS NOT NULL AND p.completed_at IS NULL))
+      WHERE t.tenant_id = ? AND t.completed_at IS NULL AND t.someday = 0
+        AND (t.project_id IS NULL OR (p.id IS NOT NULL AND p.completed_at IS NULL AND p.someday = 0))
       ORDER BY t.sort_order, t.created_at, t.id`).bind(session.tenantId).all<TaskRow>(),
   ]);
   const projects = new Map(projectsResult.results.map((project) => [project.id, project]));

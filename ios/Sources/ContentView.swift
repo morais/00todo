@@ -98,6 +98,7 @@ struct ContentView: View {
 private enum TaskFilter: String, CaseIterable, Identifiable {
     case available = "Available"
     case upcoming = "Upcoming"
+    case someday = "Someday"
     case completed = "Completed"
     var id: Self { self }
 
@@ -105,6 +106,7 @@ private enum TaskFilter: String, CaseIterable, Identifiable {
         switch self {
         case .available: "checklist"
         case .upcoming: "calendar"
+        case .someday: "tray"
         case .completed: "checkmark.circle"
         }
     }
@@ -176,7 +178,8 @@ struct TasksView: View {
         let projects = store.projects.filter { item in
             switch filter {
             case .available: item.isAvailable(at: now)
-            case .upcoming: item.completedAt == nil && !item.isAvailable(at: now)
+            case .upcoming: item.completedAt == nil && item.someday != true && !item.isAvailable(at: now)
+            case .someday: item.completedAt == nil && item.someday == true
             case .completed: item.completedAt != nil
             }
         }
@@ -187,8 +190,12 @@ struct TasksView: View {
             case .available:
                 return item.isAvailable(at: now) && (parent?.isAvailable(at: now) ?? true)
             case .upcoming:
-                return item.completedAt == nil && parent?.completedAt == nil
+                return item.completedAt == nil && item.someday != true
+                    && parent?.completedAt == nil && parent?.someday != true
                     && (!item.isAvailable(at: now) || !(parent?.isAvailable(at: now) ?? true))
+            case .someday:
+                return item.completedAt == nil && parent?.completedAt == nil
+                    && (item.someday == true || parent?.someday == true)
             case .completed: return item.completedAt != nil
             }
         }
@@ -252,7 +259,8 @@ struct TasksView: View {
         let items = visibleItems(for: filter)
         return List {
             if items.isEmpty {
-                ContentUnavailableView(filter == .available ? "All clear" : "No items", systemImage: "checkmark.circle")
+                ContentUnavailableView(filter == .available ? "All clear" : filter == .someday ? "Nothing in Someday" : "No items",
+                                       systemImage: filter == .someday ? "tray" : "checkmark.circle")
             } else if filter == .upcoming {
                 ForEach(upcomingSections(for: items), id: \.title) { section in
                     Section(section.title) {
@@ -271,7 +279,7 @@ struct TasksView: View {
         }
             .contentMargins(.top, verticalSizeClass == .compact ? 0 : nil, for: .scrollContent)
             .refreshable { await store.refresh() }
-            .modifier(PullUpToAddTask(enabled: filter != .completed) {
+            .modifier(PullUpToAddTask(enabled: filter == .available || filter == .upcoming) {
                 guard !showNewItem, store.isConfigured else { return }
                 showNewItem = true
             })
@@ -389,6 +397,9 @@ struct TaskRow: View {
                 RowDetails {
                     if let project {
                         Label(project.name, systemImage: "folder")
+                    }
+                    if task.someday == true || project?.someday == true {
+                        Label("Someday", systemImage: "tray")
                     }
                     if let start = effectiveStart,
                        !TodoDates.hasStarted(startDate: start.date, startTime: start.time, at: Date()) {

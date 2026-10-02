@@ -23,6 +23,17 @@ import Foundation
         precondition(TodoDates.startLabel(date: day(9), time: nil, now: now) == "Starts in 9 days")
         precondition(TodoDates.startLabel(date: day(0), time: "14:30", now: now).hasPrefix("Starts today at "))
         precondition(TodoDates.isOverdue(day(-1), at: now) && !TodoDates.isOverdue(day(0), at: now))
+
+        // A 1.0 cached item lacks the new field and must still decode as active.
+        let oldTask = TodoTask(id: "legacy", title: "Old task", notes: "", projectId: nil,
+                               startDate: nil, startTime: nil, dueDate: nil, completedAt: nil,
+                               sortOrder: 0, createdAt: "2026-10-01", updatedAt: "2026-10-01")
+        let legacyData = try! JSONEncoder().encode(oldTask)
+        let decoded = try! JSONDecoder().decode(TodoTask.self, from: legacyData)
+        precondition(decoded.someday == nil && decoded.isAvailable(at: now))
+        var held = decoded
+        held.someday = true
+        precondition(!held.isAvailable(at: now))
         print("Date label tests passed")
     }
 }

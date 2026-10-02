@@ -19,22 +19,22 @@ const id = z.uuid();
 const protocolVersions = new Set(["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26"]);
 const tools: Tool[] = [
   {
-    name: "list_tasks", description: "List tasks. Available hides incomplete tasks whose own or parent project's start date/time is in the future. Pass today (YYYY-MM-DD) and time (local 24-hour HH:mm) together to use your local clock, or omit both for the server's default time zone.",
-    schema: z.object({ view: z.enum(["available", "upcoming", "completed", "all"]).default("available"), today: z.string().optional(), time: z.string().optional() }),
+    name: "list_tasks", description: "List tasks. Available hides future-start and Someday tasks. Upcoming shows future-start tasks; Someday shows held tasks and tasks in Someday projects. Pass today (YYYY-MM-DD) and time (local 24-hour HH:mm) together to use your local clock, or omit both for the server's default time zone.",
+    schema: z.object({ view: z.enum(["available", "upcoming", "someday", "completed", "all"]).default("available"), today: z.string().optional(), time: z.string().optional() }),
     method: "GET", path: (a) => `/v1/tasks?view=${encodeURIComponent(String(a.view))}${a.today ? `&today=${encodeURIComponent(String(a.today))}` : ""}${a.time ? `&time=${encodeURIComponent(String(a.time))}` : ""}`, readOnly: true,
   },
-  { name: "list_projects", description: "List completable projects with their dates and notes. Available hides projects with a future start date/time. Pass today and time together for your local clock.",
-    schema: z.object({ view: z.enum(["available", "upcoming", "completed", "all"]).default("available"), today: z.string().optional(), time: z.string().optional() }),
+  { name: "list_projects", description: "List completable projects with their dates and notes. Available hides future-start and Someday projects; Someday is an explicit holding area until the project is moved back. Pass today and time together for your local clock.",
+    schema: z.object({ view: z.enum(["available", "upcoming", "someday", "completed", "all"]).default("available"), today: z.string().optional(), time: z.string().optional() }),
     method: "GET", path: (a) => `/v1/projects?view=${encodeURIComponent(String(a.view))}${a.today ? `&today=${encodeURIComponent(String(a.today))}` : ""}${a.time ? `&time=${encodeURIComponent(String(a.time))}` : ""}`, readOnly: true },
-  { name: "create_task", description: "Create a task with independent start and due dates in YYYY-MM-DD format. Optional startTime is local 24-hour HH:mm and requires startDate. A future start date/time hides it from Available.", schema: TaskInput,
+  { name: "create_task", description: "Create a task with independent start and due dates in YYYY-MM-DD format. Optional startTime is local 24-hour HH:mm and requires startDate. Set someday=true to hold it outside Available and Upcoming until moved back.", schema: TaskInput,
     method: "POST", path: () => "/v1/tasks", payload: (a) => a, readOnly: false },
-  { name: "update_task", description: "Edit a task's title, notes, project, start date/time, due date, sort order, or completion.",
+  { name: "update_task", description: "Edit a task's title, notes, project, start date/time, due date, Someday state, sort order, or completion.",
     schema: TaskPatch.extend({ id }), method: "PATCH", path: (a) => `/v1/tasks/${a.id}`,
     payload: ({ id: _id, ...a }) => a, readOnly: false, destructive: true },
   { name: "delete_task", description: "Permanently delete a task.", schema: z.object({ id }), method: "DELETE", path: (a) => `/v1/tasks/${a.id}`, readOnly: false, destructive: true },
-  { name: "create_project", description: "Create a project with notes, independent start and due dates, optional local startTime (HH:mm, requires startDate), and subtasks added with create_task/projectId.", schema: ProjectInput,
+  { name: "create_project", description: "Create a project with notes, independent start and due dates, optional local startTime (HH:mm, requires startDate), and subtasks added with create_task/projectId. Set someday=true to hold it and its subtasks outside active views.", schema: ProjectInput,
     method: "POST", path: () => "/v1/projects", payload: (a) => a, readOnly: false },
-  { name: "update_project", description: "Edit a project's name, notes, start date/time, due date, sort order, or completion.", schema: ProjectPatch.extend({ id }),
+  { name: "update_project", description: "Edit a project's name, notes, start date/time, due date, Someday state, sort order, or completion.", schema: ProjectPatch.extend({ id }),
     method: "PATCH", path: (a) => `/v1/projects/${a.id}`, payload: ({ id: _id, ...a }) => a, readOnly: false, destructive: true },
   { name: "delete_project", description: "Delete a project. Its subtasks become standalone tasks.", schema: z.object({ id }),
     method: "DELETE", path: (a) => `/v1/projects/${a.id}`, readOnly: false, destructive: true },
@@ -83,7 +83,7 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
     return rpcResult(requestId, {
       protocolVersion: typeof asked === "string" && protocolVersions.has(asked) ? asked : "2026-07-28",
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: appName(env), version: "1.0.0" },
+      serverInfo: { name: appName(env), version: "1.1.0" },
     });
   }
   if (request.method === "ping") return rpcResult(requestId, {});

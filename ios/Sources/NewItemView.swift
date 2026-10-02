@@ -40,6 +40,7 @@ struct NewItemView: View {
     @State private var startTime = Date()
     @State private var hasDue = false
     @State private var due = Date()
+    @State private var someday = false
     @State private var projectId: String?
     @State private var subtasks: [NewSubtask] = []
     @State private var saving = false
@@ -125,6 +126,14 @@ struct NewItemView: View {
                     .frame(minHeight: 90)
                     .accessibilityLabel("Notes")
                 NotesLinkButtons(notes: notes)
+            }
+
+            Section {
+                Toggle("Someday", isOn: $someday)
+            } footer: {
+                Text(effectiveKind == .task && store.projects.first(where: { $0.id == projectId })?.someday == true
+                     ? "A task in a Someday project stays there until the project is moved back."
+                     : "Keep this out of Available and Upcoming until you move it back.")
             }
 
             Section {
@@ -342,7 +351,7 @@ struct NewItemView: View {
         do {
             let session = LanguageModelSession(
                 model: model,
-                instructions: "Convert the user's request to a task by default. Use a project only when the user explicitly asks for a project or list, or names two or more distinct related subtasks. A single action is a task, not a project with one copy of that action as its subtask. For a shopping list, include only the items the user named. Do not invent items, dates, or times. The start date is absent by default, even if a due date is given; never fill it with today unless the user explicitly asks to start today. Only include a start time if the request explicitly says when work can begin on its start date. If no due date is specified, leave it empty. Notes may contain only extra details supplied by the user, never these instructions."
+                instructions: "Convert the user's request to a task by default. Use a project only when the user explicitly asks for a project or list, or names two or more distinct related subtasks. A single action is a task, not a project with one copy of that action as its subtask. For a shopping list, include only the items the user named. Do not invent items, dates, or times. Mark Someday only if the user explicitly asks to consider it someday or maybe later; future start dates alone are not Someday. The start date is absent by default, even if a due date is given; never fill it with today unless the user explicitly asks to start today. Only include a start time if the request explicitly says when work can begin on its start date. If no due date is specified, leave it empty. Notes may contain only extra details supplied by the user, never these instructions."
             )
             let today = TodoDates.string(from: Date())
             let response = try await session.respond(
@@ -374,6 +383,7 @@ struct NewItemView: View {
             if let generatedTime { startTime = generatedTime }
             hasDue = Self.validDate(result.dueDate) != nil
             if let date = Self.validDate(result.dueDate) { due = date }
+            someday = result.someday
             subtasks = shape.subtasks.map(NewSubtask.init(title:))
             hasPreview = true
             // The draft replaces the form below the request field; say so,
@@ -422,6 +432,7 @@ struct NewItemView: View {
                     draft.startTime = startTime
                     draft.hasDue = hasDue
                     draft.due = due
+                    draft.someday = someday
                     try await store.createTask(draft)
                 case .project:
                     var draft = ProjectDraft()
@@ -433,6 +444,7 @@ struct NewItemView: View {
                     draft.startTime = startTime
                     draft.hasDue = hasDue
                     draft.due = due
+                    draft.someday = someday
                     if cleanedSubtasks.isEmpty {
                         try await store.createProject(draft)
                     } else {

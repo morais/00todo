@@ -235,11 +235,16 @@ struct CreatedProject {
     }
 
     private var widgetSnapshot: WidgetSnapshot {
-        WidgetSnapshot(
-            projects: projects.map { WidgetProject(id: $0.id, name: $0.name, startDate: $0.startDate,
+        let activeProjects = projects.filter { $0.someday != true }
+        let activeProjectIDs = Set(activeProjects.map(\.id))
+        let activeTasks = tasks.filter { task in
+            task.someday != true && (task.projectId.map { activeProjectIDs.contains($0) } ?? true)
+        }
+        return WidgetSnapshot(
+            projects: activeProjects.map { WidgetProject(id: $0.id, name: $0.name, startDate: $0.startDate,
                                                   startTime: $0.startTime, dueDate: $0.dueDate,
                                                   completedAt: $0.completedAt, sortOrder: $0.sortOrder, createdAt: $0.createdAt) },
-            tasks: tasks.map { WidgetTask(id: $0.id, title: $0.title, projectId: $0.projectId,
+            tasks: activeTasks.map { WidgetTask(id: $0.id, title: $0.title, projectId: $0.projectId,
                                           startDate: $0.startDate, startTime: $0.startTime,
                                           dueDate: $0.dueDate, completedAt: $0.completedAt,
                                           sortOrder: $0.sortOrder, createdAt: $0.createdAt) }
@@ -282,7 +287,7 @@ struct CreatedProject {
         }
         do {
             let headers = snapshotETag.map { ["If-None-Match": $0] } ?? [:]
-            let (data, response) = try await exchange("/v1/snapshot", method: "GET", rawBody: nil, headers: headers)
+            let (data, response) = try await exchange("/v1/snapshot?includeSomeday=1", method: "GET", rawBody: nil, headers: headers)
             guard tenantId == currentTenant, token == currentToken, pendingChanges.isEmpty else { return }
             if response.statusCode == 304 {
                 message = syncNotice
@@ -338,6 +343,7 @@ struct CreatedProject {
                                   startDate: draft.hasStart ? TodoDates.string(from: draft.start) : nil,
                                   startTime: draft.hasStart && draft.hasStartTime ? TodoDates.timeString(from: draft.startTime) : nil,
                                   dueDate: draft.hasDue ? TodoDates.string(from: draft.due) : nil,
+                                  someday: draft.someday,
                                   completedAt: nil, sortOrder: 0, createdAt: now, updatedAt: now))
         }
         return id
@@ -353,6 +359,7 @@ struct CreatedProject {
             tasks[index].startDate = draft.hasStart ? TodoDates.string(from: draft.start) : nil
             tasks[index].startTime = draft.hasStart && draft.hasStartTime ? TodoDates.timeString(from: draft.startTime) : nil
             tasks[index].dueDate = draft.hasDue ? TodoDates.string(from: draft.due) : nil
+            tasks[index].someday = draft.someday
             tasks[index].updatedAt = Self.timestamp()
         }
     }
@@ -394,6 +401,7 @@ struct CreatedProject {
                                         notes: draft.notes, startDate: draft.hasStart ? TodoDates.string(from: draft.start) : nil,
                                         startTime: draft.hasStart && draft.hasStartTime ? TodoDates.timeString(from: draft.startTime) : nil,
                                         dueDate: draft.hasDue ? TodoDates.string(from: draft.due) : nil,
+                                        someday: draft.someday,
                                         completedAt: nil, sortOrder: 0, createdAt: now, updatedAt: now))
             for (index, title) in subtasks.enumerated() {
                 tasks.append(TodoTask(id: childIDs[index], title: title.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -413,6 +421,7 @@ struct CreatedProject {
             projects[index].startDate = draft.hasStart ? TodoDates.string(from: draft.start) : nil
             projects[index].startTime = draft.hasStart && draft.hasStartTime ? TodoDates.timeString(from: draft.startTime) : nil
             projects[index].dueDate = draft.hasDue ? TodoDates.string(from: draft.due) : nil
+            projects[index].someday = draft.someday
             projects[index].updatedAt = Self.timestamp()
         }
     }
@@ -431,8 +440,12 @@ struct CreatedProject {
     func deleteProject(_ id: String) async throws {
         let change = try PendingMutation(method: "DELETE", path: "/v1/projects/\(id)")
         try record(change) {
+            let wasSomeday = projects.first { $0.id == id }?.someday == true
             projects.removeAll { $0.id == id }
-            for index in tasks.indices where tasks[index].projectId == id { tasks[index].projectId = nil }
+            for index in tasks.indices where tasks[index].projectId == id {
+                tasks[index].projectId = nil
+                if wasSomeday && tasks[index].completedAt == nil { tasks[index].someday = true }
+            }
         }
     }
 

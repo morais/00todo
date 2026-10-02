@@ -22,6 +22,8 @@ async function environment() {
       due_date: "2099-01-20", completed_at: null, sort_order: 1, created_at: "2026-01-02" },
     { id: "done", tenant_id: reviewTenant, name: "Completed project", start_date: null, start_time: null,
       due_date: null, completed_at: "2026-01-01", sort_order: 2, created_at: "2026-01-03" },
+    { id: "held", tenant_id: reviewTenant, name: "Someday project", start_date: null, start_time: null,
+      due_date: null, someday: 1, completed_at: null, sort_order: 3, created_at: "2026-01-04" },
     { id: "private", tenant_id: otherTenant, name: "Other tenant project", start_date: null, start_time: null,
       due_date: null, completed_at: null, sort_order: 0, created_at: "2026-01-01" },
   ];
@@ -47,6 +49,12 @@ async function environment() {
     { id: "seven", tenant_id: reviewTenant, title: "<script>alert(1)</script>", project_id: null,
       start_date: null, start_time: null, due_date: null, completed_at: null,
       sort_order: 5, created_at: "2026-01-06" },
+    { id: "eight", tenant_id: reviewTenant, title: "Someday standalone", project_id: null,
+      start_date: null, start_time: null, due_date: null, someday: 1, completed_at: null,
+      sort_order: 6, created_at: "2026-01-07" },
+    { id: "nine", tenant_id: reviewTenant, title: "Someday project child", project_id: "held",
+      start_date: null, start_time: null, due_date: null, completed_at: null,
+      sort_order: 7, created_at: "2026-01-08" },
   ];
   const env = {
     PUBLIC_ORIGIN: origin, OAUTH_SIGNING_SECRET: "test-signing-secret-with-at-least-32-characters",
@@ -73,12 +81,20 @@ async function environment() {
             },
             async run() { return { meta: { changes: 1 } }; },
             async all() {
-              if (sql.includes("FROM projects WHERE")) return { results: projects.filter((row) =>
-                row.tenant_id === args[0] && row.completed_at === null) };
-              if (sql.includes("FROM tasks t")) return { results: tasks.filter((row) =>
-                row.tenant_id === args[0] && row.completed_at === null
-                && (!row.project_id || projects.some((project) => project.id === row.project_id
-                  && project.tenant_id === row.tenant_id && project.completed_at === null))) };
+              if (sql.includes("FROM projects WHERE")) {
+                if (!sql.includes("someday = 0")) throw Error("Dashboard must exclude Someday projects");
+                return { results: projects.filter((row) =>
+                  row.tenant_id === args[0] && row.completed_at === null && row.someday !== 1) };
+              }
+              if (sql.includes("FROM tasks t")) {
+                if (!sql.includes("t.someday = 0") || !sql.includes("p.someday = 0")) {
+                  throw Error("Dashboard must exclude Someday tasks and their parents");
+                }
+                return { results: tasks.filter((row) =>
+                  row.tenant_id === args[0] && row.completed_at === null && row.someday !== 1
+                  && (!row.project_id || projects.some((project) => project.id === row.project_id
+                    && project.tenant_id === row.tenant_id && project.completed_at === null && project.someday !== 1))) };
+              }
               return { results: [] };
             },
           };
@@ -205,6 +221,9 @@ describe("read-only dashboard", () => {
     expect(html).not.toContain("Already completed");
     expect(html).not.toContain("Completed project");
     expect(html).not.toContain("Hidden by completed project");
+    expect(html).not.toContain("Someday project");
+    expect(html).not.toContain("Someday standalone");
+    expect(html).not.toContain("Someday project child");
     expect(html).not.toContain("Other tenant secret");
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");
