@@ -235,7 +235,7 @@ struct TasksView: View {
             .map { (title: $0.0, items: $0.1) }
     }
 
-    @ViewBuilder private func itemRow(_ item: ListItem) -> some View {
+    @ViewBuilder private func itemRow(_ item: ListItem, showsSomedayLabel: Bool = true) -> some View {
         switch item {
         case .project(let project):
             NavigationLink {
@@ -244,7 +244,7 @@ struct TasksView: View {
                 ProjectRow(
                     project: project,
                     openCount: store.tasks.filter { $0.projectId == project.id && $0.completedAt == nil }.count,
-                    showsSomedayLabel: filter != .someday
+                    showsSomedayLabel: showsSomedayLabel
                 ) { Task { await store.toggle(project) } }
             }
         case .task(let task):
@@ -252,21 +252,27 @@ struct TasksView: View {
                 TaskEditor(task: task)
             } label: {
                 TaskRow(task: task, project: store.projects.first { $0.id == task.projectId },
-                        showsSomedayLabel: filter != .someday) { Task { await store.toggle(task) } }
+                        showsSomedayLabel: showsSomedayLabel) { Task { await store.toggle(task) } }
             }
         }
     }
 
     private func list(for filter: TaskFilter) -> some View {
         let items = visibleItems(for: filter)
+        let somedayItems = filter == .upcoming ? visibleItems(for: .someday) : []
         return List {
-            if items.isEmpty {
+            if items.isEmpty && somedayItems.isEmpty {
                 ContentUnavailableView(filter == .available ? "All clear" : filter == .someday ? "Nothing in Someday" : "No items",
                                        systemImage: filter == .someday ? "tray" : "checkmark.circle")
             } else if filter == .upcoming {
                 ForEach(upcomingSections(for: items), id: \.title) { section in
                     Section(section.title) {
                         ForEach(section.items) { item in itemRow(item) }
+                    }
+                }
+                if !somedayItems.isEmpty {
+                    Section("Someday") {
+                        ForEach(somedayItems) { item in itemRow(item, showsSomedayLabel: false) }
                     }
                 }
             } else if filter == .completed {
@@ -290,7 +296,7 @@ struct TasksView: View {
     var body: some View {
         NavigationStack {
             TabView(selection: $filter) {
-                ForEach(TaskFilter.allCases) { choice in
+                ForEach(TaskFilter.allCases.filter { $0 != .someday }) { choice in
                     list(for: choice)
                         .tabItem { Label(choice.rawValue, systemImage: choice.symbol) }
                         .tag(choice)
