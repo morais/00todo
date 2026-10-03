@@ -9,13 +9,16 @@ struct TodoProject: Codable, Identifiable, Equatable {
     var dueDate: String?
     // Optional so cached 1.0 snapshots decode as active items.
     var someday: Bool? = nil
+    // Optional so cached snapshots from before Blocked decode as active items.
+    var blocked: Bool? = nil
     var completedAt: String?
     var sortOrder: Int
     var createdAt: String
     var updatedAt: String
 
     func isAvailable(at now: Date = Date()) -> Bool {
-        completedAt == nil && someday != true && TodoDates.hasStarted(startDate: startDate, startTime: startTime, at: now)
+        completedAt == nil && someday != true && blocked != true
+            && TodoDates.hasStarted(startDate: startDate, startTime: startTime, at: now)
     }
 }
 
@@ -29,13 +32,16 @@ struct TodoTask: Codable, Identifiable, Equatable {
     var dueDate: String?
     // Optional so cached 1.0 snapshots decode as active items.
     var someday: Bool? = nil
+    // Optional so cached snapshots from before Blocked decode as active items.
+    var blocked: Bool? = nil
     var completedAt: String?
     var sortOrder: Int
     var createdAt: String
     var updatedAt: String
 
     func isAvailable(at now: Date = Date()) -> Bool {
-        completedAt == nil && someday != true && TodoDates.hasStarted(startDate: startDate, startTime: startTime, at: now)
+        completedAt == nil && someday != true && blocked != true
+            && TodoDates.hasStarted(startDate: startDate, startTime: startTime, at: now)
     }
 }
 

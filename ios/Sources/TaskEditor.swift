@@ -11,6 +11,7 @@ struct TaskDraft {
     var hasDue = false
     var due = Date()
     var someday = false
+    var blocked = false
 
     init(task: TodoTask? = nil, projectId: String? = nil) {
         self.projectId = task?.projectId ?? projectId
@@ -24,6 +25,7 @@ struct TaskDraft {
             hasDue = task.dueDate != nil
             due = TodoDates.date(from: task.dueDate)
             someday = task.someday == true
+            blocked = task.blocked == true
         }
     }
 
@@ -34,7 +36,8 @@ struct TaskDraft {
          "startDate": hasStart ? TodoDates.string(from: start) : NSNull(),
          "startTime": hasStart && hasStartTime ? TodoDates.timeString(from: startTime) : NSNull(),
          "dueDate": hasDue ? TodoDates.string(from: due) : NSNull(),
-         "someday": someday]
+         "someday": someday,
+         "blocked": blocked]
     }
 }
 
@@ -79,7 +82,17 @@ struct TaskEditor: View {
             }
 
             Section {
+                Toggle("Blocked", isOn: $draft.blocked)
+                    .onChange(of: draft.blocked) { _, value in if value { draft.someday = false } }
+            } footer: {
+                Text(store.projects.first(where: { $0.id == draft.projectId })?.blocked == true
+                     ? "This task stays Blocked while its project is blocked, even if this switch is off."
+                     : "Keep this out of Available until the blocker is cleared.")
+            }
+
+            Section {
                 Toggle("Someday", isOn: $draft.someday)
+                    .onChange(of: draft.someday) { _, value in if value { draft.blocked = false } }
             } footer: {
                 Text(store.projects.first(where: { $0.id == draft.projectId })?.someday == true
                      ? "This task stays in Someday while its project is there, even if this switch is off."

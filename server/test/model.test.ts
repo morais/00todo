@@ -4,11 +4,11 @@ import { dateInZone, timeInZone } from "../src/api";
 
 const sample: Task = {
   id: "task", title: "Buy milk", notes: "", projectId: null,
-  startDate: null, startTime: null, dueDate: null, someday: false, completedAt: null,
+  startDate: null, startTime: null, dueDate: null, someday: false, blocked: false, completedAt: null,
   sortOrder: 0, createdAt: "2026-09-27T12:00:00Z", updatedAt: "2026-09-27T12:00:00Z",
 };
 const sampleProject: Project = {
-  id: "project", name: "Shopping", notes: "", startDate: null, startTime: null, dueDate: null, someday: false,
+  id: "project", name: "Shopping", notes: "", startDate: null, startTime: null, dueDate: null, someday: false, blocked: false,
   completedAt: null, sortOrder: 0,
   createdAt: "2026-09-27T12:00:00Z", updatedAt: "2026-09-27T12:00:00Z",
 };
@@ -35,6 +35,23 @@ describe("task visibility", () => {
     expect(inView({ ...heldTask, someday: false }, "available", "2026-10-02")).toBe(true);
     expect(projectInView({ ...heldProject, someday: false }, "available", "2026-10-02")).toBe(true);
     expect(inView({ ...heldTask, completedAt: "2026-10-02T12:00:00Z" }, "someday", "2026-10-02")).toBe(false);
+  });
+
+  it("holds Blocked tasks and projects, including inherited project blockers", () => {
+    const blockedTask = { ...sample, blocked: true };
+    const blockedProject = { ...sampleProject, blocked: true };
+    for (const view of ["available", "upcoming", "all"] as const) {
+      expect(inView(blockedTask, view, "2026-10-03")).toBe(false);
+      expect(projectInView(blockedProject, view, "2026-10-03")).toBe(false);
+      expect(inView(sample, view, "2026-10-03", null, null, "12:00", null, false, true)).toBe(false);
+    }
+    expect(inView(blockedTask, "blocked", "2026-10-03")).toBe(true);
+    expect(projectInView(blockedProject, "blocked", "2026-10-03")).toBe(true);
+    expect(inView(sample, "blocked", "2026-10-03", null, null, "12:00", null, false, true)).toBe(true);
+    expect(inView({ ...blockedTask, blocked: false }, "available", "2026-10-03")).toBe(true);
+    expect(inView({ ...blockedTask, someday: true }, "blocked", "2026-10-03")).toBe(false);
+    expect(inView({ ...blockedTask, someday: true }, "someday", "2026-10-03")).toBe(true);
+    expect(inView({ ...blockedTask, completedAt: "2026-10-03T12:00:00Z" }, "completed", "2026-10-03")).toBe(true);
   });
 
   it("keeps same-day timed starts Upcoming until their start time", () => {
@@ -82,11 +99,12 @@ describe("task visibility", () => {
   it("validates project dates and keeps partial updates partial", () => {
     expect(ProjectInput.safeParse({ name: "Shopping", startDate: "2026-02-30" }).success).toBe(false);
     expect(ProjectInput.parse({ name: "Shopping", notes: "Groceries", sortOrder: 2 })).toMatchObject({
-      name: "Shopping", notes: "Groceries", sortOrder: 2, startDate: null, startTime: null, dueDate: null, someday: false,
+      name: "Shopping", notes: "Groceries", sortOrder: 2, startDate: null, startTime: null, dueDate: null, someday: false, blocked: false,
     });
     expect(ProjectPatch.parse({ dueDate: null })).toEqual({ dueDate: null });
     expect(ProjectPatch.parse({ completed: true })).toEqual({ completed: true });
     expect(ProjectPatch.parse({ someday: true })).toEqual({ someday: true });
+    expect(ProjectPatch.parse({ blocked: true })).toEqual({ blocked: true });
   });
 
   it("rejects impossible calendar dates", () => {
@@ -94,7 +112,9 @@ describe("task visibility", () => {
     expect(TaskInput.safeParse({ title: "x", startDate: "2026-09-29", startTime: "24:00" }).success).toBe(false);
     expect(TaskInput.parse({ title: "x", startDate: "2026-09-29", startTime: "09:30" }).startTime).toBe("09:30");
     expect(TaskInput.parse({ title: "x" }).someday).toBe(false);
+    expect(TaskInput.parse({ title: "x" }).blocked).toBe(false);
     expect(TaskPatch.parse({ someday: true })).toEqual({ someday: true });
+    expect(TaskPatch.parse({ blocked: true })).toEqual({ blocked: true });
   });
 
   it("validates an entire project and subtask batch before writing", () => {

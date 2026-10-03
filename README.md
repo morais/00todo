@@ -2,7 +2,7 @@
 
 ![00Todo checked-task mascot and wordmark](docs/brand/brand-preview.png)
 
-A small SwiftUI task app backed by Cloudflare Workers and D1. Start and due dates are independent: a future start date or optional start time hides a task from Available until it begins, while a due date never hides it. Someday holds tasks and projects you may consider later, outside Available and Upcoming until you move them back. Projects can be ordinary task lists or shopping lists.
+A small SwiftUI task app backed by Cloudflare Workers and D1. Start and due dates are independent: a future start date or optional start time hides a task from Available until it begins, while a due date never hides it. Blocked holds work waiting on something; Someday holds ideas you may consider later. Both appear below scheduled work in Upcoming. Projects can be ordinary task lists or shopping lists.
 
 The shape follows sister project 00Widget: a native client, a Worker with REST and MCP surfaces, and committed `.sample` configuration rather than committed deployment credentials. The mascot and palette are also a deliberate sibling identity, with the chart-shaped mouth replaced by checked tasks. The same API can later serve a Horizon OS app.
 

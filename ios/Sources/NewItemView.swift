@@ -41,6 +41,7 @@ struct NewItemView: View {
     @State private var hasDue = false
     @State private var due = Date()
     @State private var someday = false
+    @State private var blocked = false
     @State private var projectId: String?
     @State private var subtasks: [NewSubtask] = []
     @State private var saving = false
@@ -145,7 +146,17 @@ struct NewItemView: View {
             }
 
             Section {
+                Toggle("Blocked", isOn: $blocked)
+                    .onChange(of: blocked) { _, value in if value { someday = false } }
+            } footer: {
+                Text(effectiveKind == .task && store.projects.first(where: { $0.id == projectId })?.blocked == true
+                     ? "A task in a blocked project stays Blocked until the project is unblocked."
+                     : "Keep this out of Available until the blocker is cleared.")
+            }
+
+            Section {
                 Toggle("Someday", isOn: $someday)
+                    .onChange(of: someday) { _, value in if value { blocked = false } }
             } footer: {
                 Text(effectiveKind == .task && store.projects.first(where: { $0.id == projectId })?.someday == true
                      ? "A task in a Someday project stays there until the project is moved back."
@@ -351,7 +362,7 @@ struct NewItemView: View {
         do {
             let session = LanguageModelSession(
                 model: model,
-                instructions: "Convert the user's request to a task by default. Use a project only when the user explicitly asks for a project or list, or names two or more distinct related subtasks. A single action is a task, not a project with one copy of that action as its subtask. For a shopping list, include only the items the user named. Do not invent items, dates, or times. Mark Someday only if the user explicitly asks to consider it someday or maybe later; future start dates alone are not Someday. The start date is absent by default, even if a due date is given; never fill it with today unless the user explicitly asks to start today. Only include a start time if the request explicitly says when work can begin on its start date. If no due date is specified, leave it empty. Notes may contain only extra details supplied by the user, never these instructions."
+                instructions: "Convert the user's request to a task by default. Use a project only when the user explicitly asks for a project or list, or names two or more distinct related subtasks. A single action is a task, not a project with one copy of that action as its subtask. For a shopping list, include only the items the user named. Do not invent items, dates, or times. Mark Blocked only if the user explicitly says it is blocked or waiting on something. Mark Someday only if the user explicitly asks to consider it someday or maybe later. Blocked and Someday are mutually exclusive; future start dates alone imply neither. The start date is absent by default, even if a due date is given; never fill it with today unless the user explicitly asks to start today. Only include a start time if the request explicitly says when work can begin on its start date. If no due date is specified, leave it empty. Notes may contain only extra details supplied by the user, never these instructions."
             )
             let today = TodoDates.string(from: Date())
             let response = try await session.respond(
@@ -384,6 +395,7 @@ struct NewItemView: View {
             hasDue = Self.validDate(result.dueDate) != nil
             if let date = Self.validDate(result.dueDate) { due = date }
             someday = result.someday
+            blocked = result.blocked && !result.someday
             subtasks = shape.subtasks.map(NewSubtask.init(title:))
             hasPreview = true
             // The draft replaces the form below the request field; say so,
@@ -433,6 +445,7 @@ struct NewItemView: View {
                     draft.hasDue = hasDue
                     draft.due = due
                     draft.someday = someday
+                    draft.blocked = blocked
                     try await store.createTask(draft)
                 case .project:
                     var draft = ProjectDraft()
@@ -445,6 +458,7 @@ struct NewItemView: View {
                     draft.hasDue = hasDue
                     draft.due = due
                     draft.someday = someday
+                    draft.blocked = blocked
                     if cleanedSubtasks.isEmpty {
                         try await store.createProject(draft)
                     } else {

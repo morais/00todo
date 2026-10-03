@@ -235,10 +235,11 @@ struct CreatedProject {
     }
 
     private var widgetSnapshot: WidgetSnapshot {
-        let activeProjects = projects.filter { $0.someday != true }
+        let activeProjects = projects.filter { $0.someday != true && $0.blocked != true }
         let activeProjectIDs = Set(activeProjects.map(\.id))
         let activeTasks = tasks.filter { task in
-            task.someday != true && (task.projectId.map { activeProjectIDs.contains($0) } ?? true)
+            task.someday != true && task.blocked != true
+                && (task.projectId.map { activeProjectIDs.contains($0) } ?? true)
         }
         return WidgetSnapshot(
             projects: activeProjects.map { WidgetProject(id: $0.id, name: $0.name, startDate: $0.startDate,
@@ -287,7 +288,7 @@ struct CreatedProject {
         }
         do {
             let headers = snapshotETag.map { ["If-None-Match": $0] } ?? [:]
-            let (data, response) = try await exchange("/v1/snapshot?includeSomeday=1", method: "GET", rawBody: nil, headers: headers)
+            let (data, response) = try await exchange("/v1/snapshot?includeSomeday=1&includeBlocked=1", method: "GET", rawBody: nil, headers: headers)
             guard tenantId == currentTenant, token == currentToken, pendingChanges.isEmpty else { return }
             if response.statusCode == 304 {
                 message = syncNotice
@@ -344,6 +345,7 @@ struct CreatedProject {
                                   startTime: draft.hasStart && draft.hasStartTime ? TodoDates.timeString(from: draft.startTime) : nil,
                                   dueDate: draft.hasDue ? TodoDates.string(from: draft.due) : nil,
                                   someday: draft.someday,
+                                  blocked: draft.blocked,
                                   completedAt: nil, sortOrder: 0, createdAt: now, updatedAt: now))
         }
         return id
@@ -360,6 +362,7 @@ struct CreatedProject {
             tasks[index].startTime = draft.hasStart && draft.hasStartTime ? TodoDates.timeString(from: draft.startTime) : nil
             tasks[index].dueDate = draft.hasDue ? TodoDates.string(from: draft.due) : nil
             tasks[index].someday = draft.someday
+            tasks[index].blocked = draft.blocked
             tasks[index].updatedAt = Self.timestamp()
         }
     }
@@ -402,6 +405,7 @@ struct CreatedProject {
                                         startTime: draft.hasStart && draft.hasStartTime ? TodoDates.timeString(from: draft.startTime) : nil,
                                         dueDate: draft.hasDue ? TodoDates.string(from: draft.due) : nil,
                                         someday: draft.someday,
+                                        blocked: draft.blocked,
                                         completedAt: nil, sortOrder: 0, createdAt: now, updatedAt: now))
             for (index, title) in subtasks.enumerated() {
                 tasks.append(TodoTask(id: childIDs[index], title: title.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -422,6 +426,7 @@ struct CreatedProject {
             projects[index].startTime = draft.hasStart && draft.hasStartTime ? TodoDates.timeString(from: draft.startTime) : nil
             projects[index].dueDate = draft.hasDue ? TodoDates.string(from: draft.due) : nil
             projects[index].someday = draft.someday
+            projects[index].blocked = draft.blocked
             projects[index].updatedAt = Self.timestamp()
         }
     }
@@ -441,10 +446,12 @@ struct CreatedProject {
         let change = try PendingMutation(method: "DELETE", path: "/v1/projects/\(id)")
         try record(change) {
             let wasSomeday = projects.first { $0.id == id }?.someday == true
+            let wasBlocked = projects.first { $0.id == id }?.blocked == true
             projects.removeAll { $0.id == id }
             for index in tasks.indices where tasks[index].projectId == id {
                 tasks[index].projectId = nil
                 if wasSomeday && tasks[index].completedAt == nil { tasks[index].someday = true }
+                if wasBlocked && tasks[index].completedAt == nil { tasks[index].blocked = true }
             }
         }
     }

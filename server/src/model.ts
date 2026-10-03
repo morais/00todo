@@ -14,6 +14,7 @@ export const ProjectInput = z.strictObject({
   startTime: timeOnly.nullable().default(null),
   dueDate: dateOnly.nullable().default(null),
   someday: z.boolean().default(false),
+  blocked: z.boolean().default(false),
   sortOrder: z.number().int().min(-1000000).max(1000000).default(0),
 });
 
@@ -24,6 +25,7 @@ export const ProjectPatch = z.strictObject({
   startTime: timeOnly.nullable().optional(),
   dueDate: dateOnly.nullable().optional(),
   someday: z.boolean().optional(),
+  blocked: z.boolean().optional(),
   sortOrder: z.number().int().min(-1000000).max(1000000).optional(),
   completed: z.boolean().optional(),
 });
@@ -37,6 +39,7 @@ export const TaskInput = z.strictObject({
   startTime: timeOnly.nullable().default(null),
   dueDate: dateOnly.nullable().default(null),
   someday: z.boolean().default(false),
+  blocked: z.boolean().default(false),
   sortOrder: z.number().int().min(-1000000).max(1000000).default(0),
 });
 
@@ -53,6 +56,7 @@ export const TaskPatch = z.strictObject({
   startTime: timeOnly.nullable().optional(),
   dueDate: dateOnly.nullable().optional(),
   someday: z.boolean().optional(),
+  blocked: z.boolean().optional(),
   sortOrder: z.number().int().min(-1000000).max(1000000).optional(),
   completed: z.boolean().optional(),
 });
@@ -66,6 +70,7 @@ export type Task = {
   startTime: string | null;
   dueDate: string | null;
   someday: boolean;
+  blocked: boolean;
   completedAt: string | null;
   sortOrder: number;
   createdAt: string;
@@ -80,34 +85,39 @@ export type Project = {
   startTime: string | null;
   dueDate: string | null;
   someday: boolean;
+  blocked: boolean;
   completedAt: string | null;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
 };
 
-export type TaskView = "available" | "upcoming" | "someday" | "completed" | "all";
-export type ProjectView = "available" | "upcoming" | "someday" | "completed" | "all";
+export type TaskView = "available" | "upcoming" | "blocked" | "someday" | "completed" | "all";
+export type ProjectView = "available" | "upcoming" | "blocked" | "someday" | "completed" | "all";
 
 export function startsLater(startDate: string | null, startTime: string | null, today: string, nowTime = "23:59"): boolean {
   return startDate !== null && (startDate > today || (startDate === today && startTime !== null && startTime > nowTime));
 }
 
 export function projectInView(project: Project, view: ProjectView, today: string, nowTime = "23:59"): boolean {
+  if (view === "completed") return project.completedAt !== null;
   if (view === "someday") return project.completedAt === null && project.someday;
   if (project.someday) return false;
+  if (view === "blocked") return project.completedAt === null && project.blocked;
+  if (project.blocked) return false;
   if (view === "all") return true;
-  if (view === "completed") return project.completedAt !== null;
   if (project.completedAt !== null) return false;
   const future = startsLater(project.startDate, project.startTime, today, nowTime);
   return view === "upcoming" ? future : !future;
 }
 
-export function inView(task: Task, view: TaskView, today: string, projectStartDate: string | null = null, projectCompletedAt: string | null = null, nowTime = "23:59", projectStartTime: string | null = null, projectSomeday = false): boolean {
+export function inView(task: Task, view: TaskView, today: string, projectStartDate: string | null = null, projectCompletedAt: string | null = null, nowTime = "23:59", projectStartTime: string | null = null, projectSomeday = false, projectBlocked = false): boolean {
+  if (view === "completed") return task.completedAt !== null;
   if (view === "someday") return task.completedAt === null && projectCompletedAt === null && (task.someday || projectSomeday);
   if (task.someday || projectSomeday) return false;
+  if (view === "blocked") return task.completedAt === null && projectCompletedAt === null && (task.blocked || projectBlocked);
+  if (task.blocked || projectBlocked) return false;
   if (view === "all") return true;
-  if (view === "completed") return task.completedAt !== null;
   if (task.completedAt !== null || projectCompletedAt !== null) return false;
   const future = startsLater(task.startDate, task.startTime, today, nowTime)
     || startsLater(projectStartDate, projectStartTime, today, nowTime);

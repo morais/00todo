@@ -10,6 +10,7 @@ struct ProjectDraft {
     var hasDue = false
     var due = Date()
     var someday = false
+    var blocked = false
 
     init(project: TodoProject? = nil) {
         if let project {
@@ -22,6 +23,7 @@ struct ProjectDraft {
             hasDue = project.dueDate != nil
             due = TodoDates.date(from: project.dueDate)
             someday = project.someday == true
+            blocked = project.blocked == true
         }
     }
 
@@ -31,7 +33,8 @@ struct ProjectDraft {
          "startDate": hasStart ? TodoDates.string(from: start) : NSNull(),
          "startTime": hasStart && hasStartTime ? TodoDates.timeString(from: startTime) : NSNull(),
          "dueDate": hasDue ? TodoDates.string(from: due) : NSNull(),
-         "someday": someday]
+         "someday": someday,
+         "blocked": blocked]
     }
 }
 
@@ -39,6 +42,7 @@ struct ProjectRow: View {
     let project: TodoProject
     let openCount: Int
     var showsSomedayLabel = true
+    var showsBlockedLabel = true
     let onToggle: () -> Void
 
     var body: some View {
@@ -63,6 +67,7 @@ struct ProjectRow: View {
                 RowDetails {
                     Text("\(openCount) \(openCount == 1 ? "subtask" : "subtasks")")
                     if showsSomedayLabel && project.someday == true { Label("Someday", systemImage: "tray") }
+                    if showsBlockedLabel && project.blocked == true { Label("Blocked", systemImage: "hand.raised") }
                     if let startDate = project.startDate,
                        !TodoDates.hasStarted(startDate: startDate, startTime: project.startTime, at: Date()) {
                         Text(TodoDates.startLabel(date: startDate, time: project.startTime))
@@ -119,7 +124,14 @@ struct ProjectEditor: View {
                 }
             }
             Section {
+                Toggle("Blocked", isOn: $draft.blocked)
+                    .onChange(of: draft.blocked) { _, value in if value { draft.someday = false } }
+            } footer: {
+                Text("Keep this project and its tasks out of Available until the blocker is cleared.")
+            }
+            Section {
                 Toggle("Someday", isOn: $draft.someday)
+                    .onChange(of: draft.someday) { _, value in if value { draft.blocked = false } }
             } footer: {
                 Text("Keep this project and its tasks out of Available and Upcoming until you move it back.")
             }
@@ -206,13 +218,25 @@ struct ProjectTasksView: View {
 
     private var upcomingItems: [TodoTask] {
         let parent = store.projects.first(where: { $0.id == project.id }) ?? project
-        let parentIsUpcoming = !parent.isAvailable(at: now) && parent.completedAt == nil && parent.someday != true
+        let parentIsUpcoming = !parent.isAvailable(at: now) && parent.completedAt == nil
+            && parent.someday != true && parent.blocked != true
         return store.tasks.filter {
-            $0.projectId == project.id && $0.completedAt == nil && $0.someday != true
-                && parent.completedAt == nil && parent.someday != true
+            $0.projectId == project.id && $0.completedAt == nil
+                && $0.someday != true && $0.blocked != true
+                && parent.completedAt == nil && parent.someday != true && parent.blocked != true
                 && (!$0.isAvailable(at: now) || parentIsUpcoming)
         }
             .sorted { "\($0.startDate ?? "9999-12-31")T\($0.startTime ?? "00:00")" < "\($1.startDate ?? "9999-12-31")T\($1.startTime ?? "00:00")" }
+    }
+
+    private var blockedItems: [TodoTask] {
+        let parent = store.projects.first(where: { $0.id == project.id }) ?? project
+        return store.tasks.filter {
+            $0.projectId == project.id && $0.completedAt == nil && parent.completedAt == nil
+                && $0.someday != true && parent.someday != true
+                && ($0.blocked == true || parent.blocked == true)
+        }
+        .sorted { $0.sortOrder == $1.sortOrder ? $0.createdAt < $1.createdAt : $0.sortOrder < $1.sortOrder }
     }
 
     private var somedayItems: [TodoTask] {
@@ -239,7 +263,8 @@ struct ProjectTasksView: View {
                     NotesLinkButtons(notes: visibleNotes)
                 }
             }
-            if items.isEmpty && upcomingItems.isEmpty && somedayItems.isEmpty && completedItems.isEmpty {
+            if items.isEmpty && upcomingItems.isEmpty && blockedItems.isEmpty
+                && somedayItems.isEmpty && completedItems.isEmpty {
                 ContentUnavailableView("No tasks", systemImage: "checklist")
             } else {
                 if !items.isEmpty {
@@ -262,6 +287,17 @@ struct ProjectTasksView: View {
                                 } label: {
                                     TaskRow(task: task, project: nil) { Task { await store.toggle(task) } }
                                 }
+                            }
+                        }
+                    }
+                }
+                if !blockedItems.isEmpty {
+                    Section("Blocked") {
+                        ForEach(blockedItems) { task in
+                            NavigationLink {
+                                TaskEditor(task: task)
+                            } label: {
+                                TaskRow(task: task, project: nil, showsBlockedLabel: false) { Task { await store.toggle(task) } }
                             }
                         }
                     }

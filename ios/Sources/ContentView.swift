@@ -98,6 +98,7 @@ struct ContentView: View {
 private enum TaskFilter: String, CaseIterable, Identifiable {
     case available = "Available"
     case upcoming = "Upcoming"
+    case blocked = "Blocked"
     case someday = "Someday"
     case completed = "Completed"
     var id: Self { self }
@@ -106,6 +107,7 @@ private enum TaskFilter: String, CaseIterable, Identifiable {
         switch self {
         case .available: "checklist"
         case .upcoming: "calendar"
+        case .blocked: "hand.raised"
         case .someday: "tray"
         case .completed: "checkmark.circle"
         }
@@ -178,7 +180,8 @@ struct TasksView: View {
         let projects = store.projects.filter { item in
             switch filter {
             case .available: item.isAvailable(at: now)
-            case .upcoming: item.completedAt == nil && item.someday != true && !item.isAvailable(at: now)
+            case .upcoming: item.completedAt == nil && item.someday != true && item.blocked != true && !item.isAvailable(at: now)
+            case .blocked: item.completedAt == nil && item.someday != true && item.blocked == true
             case .someday: item.completedAt == nil && item.someday == true
             case .completed: item.completedAt != nil
             }
@@ -190,9 +193,13 @@ struct TasksView: View {
             case .available:
                 return item.isAvailable(at: now) && (parent?.isAvailable(at: now) ?? true)
             case .upcoming:
-                return item.completedAt == nil && item.someday != true
-                    && parent?.completedAt == nil && parent?.someday != true
+                return item.completedAt == nil && item.someday != true && item.blocked != true
+                    && parent?.completedAt == nil && parent?.someday != true && parent?.blocked != true
                     && (!item.isAvailable(at: now) || !(parent?.isAvailable(at: now) ?? true))
+            case .blocked:
+                return item.completedAt == nil && parent?.completedAt == nil
+                    && item.someday != true && parent?.someday != true
+                    && (item.blocked == true || parent?.blocked == true)
             case .someday:
                 return item.completedAt == nil && parent?.completedAt == nil
                     && (item.someday == true || parent?.someday == true)
@@ -235,7 +242,8 @@ struct TasksView: View {
             .map { (title: $0.0, items: $0.1) }
     }
 
-    @ViewBuilder private func itemRow(_ item: ListItem, showsSomedayLabel: Bool = true) -> some View {
+    @ViewBuilder private func itemRow(_ item: ListItem, showsSomedayLabel: Bool = true,
+                                      showsBlockedLabel: Bool = true) -> some View {
         switch item {
         case .project(let project):
             NavigationLink {
@@ -244,7 +252,8 @@ struct TasksView: View {
                 ProjectRow(
                     project: project,
                     openCount: store.tasks.filter { $0.projectId == project.id && $0.completedAt == nil }.count,
-                    showsSomedayLabel: showsSomedayLabel
+                    showsSomedayLabel: showsSomedayLabel,
+                    showsBlockedLabel: showsBlockedLabel
                 ) { Task { await store.toggle(project) } }
             }
         case .task(let task):
@@ -252,16 +261,18 @@ struct TasksView: View {
                 TaskEditor(task: task)
             } label: {
                 TaskRow(task: task, project: store.projects.first { $0.id == task.projectId },
-                        showsSomedayLabel: showsSomedayLabel) { Task { await store.toggle(task) } }
+                        showsSomedayLabel: showsSomedayLabel,
+                        showsBlockedLabel: showsBlockedLabel) { Task { await store.toggle(task) } }
             }
         }
     }
 
     private func list(for filter: TaskFilter) -> some View {
         let items = visibleItems(for: filter)
+        let blockedItems = filter == .upcoming ? visibleItems(for: .blocked) : []
         let somedayItems = filter == .upcoming ? visibleItems(for: .someday) : []
         return List {
-            if items.isEmpty && somedayItems.isEmpty {
+            if items.isEmpty && blockedItems.isEmpty && somedayItems.isEmpty {
                 ContentUnavailableView(filter == .available ? "All clear" : filter == .someday ? "Nothing in Someday" : "No items",
                                        systemImage: filter == .someday ? "tray" : "checkmark.circle")
             } else if filter == .upcoming {
@@ -270,9 +281,14 @@ struct TasksView: View {
                         ForEach(section.items) { item in itemRow(item) }
                     }
                 }
+                if !blockedItems.isEmpty {
+                    Section("Blocked") {
+                        ForEach(blockedItems) { item in itemRow(item, showsSomedayLabel: false, showsBlockedLabel: false) }
+                    }
+                }
                 if !somedayItems.isEmpty {
                     Section("Someday") {
-                        ForEach(somedayItems) { item in itemRow(item, showsSomedayLabel: false) }
+                        ForEach(somedayItems) { item in itemRow(item, showsSomedayLabel: false, showsBlockedLabel: false) }
                     }
                 }
             } else if filter == .completed {
@@ -296,7 +312,7 @@ struct TasksView: View {
     var body: some View {
         NavigationStack {
             TabView(selection: $filter) {
-                ForEach(TaskFilter.allCases.filter { $0 != .someday }) { choice in
+                ForEach(TaskFilter.allCases.filter { $0 != .blocked && $0 != .someday }) { choice in
                     list(for: choice)
                         .tabItem { Label(choice.rawValue, systemImage: choice.symbol) }
                         .tag(choice)
@@ -376,6 +392,7 @@ struct TaskRow: View {
     let task: TodoTask
     let project: TodoProject?
     var showsSomedayLabel = true
+    var showsBlockedLabel = true
     let onToggle: () -> Void
 
     private var effectiveStart: (date: String, time: String?)? {
@@ -393,6 +410,7 @@ struct TaskRow: View {
     private var hasVisibleDetails: Bool {
         project != nil
             || (showsSomedayLabel && (task.someday == true || project?.someday == true))
+            || (showsBlockedLabel && (task.blocked == true || project?.blocked == true))
             || effectiveStart.map { !TodoDates.hasStarted(startDate: $0.date, startTime: $0.time, at: Date()) } == true
             || task.dueDate != nil
     }
@@ -417,6 +435,9 @@ struct TaskRow: View {
                         }
                         if showsSomedayLabel && (task.someday == true || project?.someday == true) {
                             Label("Someday", systemImage: "tray")
+                        }
+                        if showsBlockedLabel && (task.blocked == true || project?.blocked == true) {
+                            Label("Blocked", systemImage: "hand.raised")
                         }
                         if let start = effectiveStart,
                            !TodoDates.hasStarted(startDate: start.date, startTime: start.time, at: Date()) {

@@ -25,24 +25,24 @@ export interface Env {
 
 type ProjectRow = {
   id: string; name: string; notes: string; start_date: string | null;
-  start_time: string | null; due_date: string | null; someday: number; completed_at: string | null; sort_order: number;
+  start_time: string | null; due_date: string | null; someday: number; blocked: number; completed_at: string | null; sort_order: number;
   created_at: string; updated_at: string;
 };
 type TaskRow = {
   id: string; title: string; notes: string; project_id: string | null;
-  start_date: string | null; start_time: string | null; due_date: string | null; someday: number; completed_at: string | null;
+  start_date: string | null; start_time: string | null; due_date: string | null; someday: number; blocked: number; completed_at: string | null;
   sort_order: number; created_at: string; updated_at: string;
 };
 
 const project = (row: ProjectRow): Project => ({
   id: row.id, name: row.name, notes: row.notes, startDate: row.start_date,
   startTime: row.start_time,
-  dueDate: row.due_date, someday: row.someday === 1, completedAt: row.completed_at, sortOrder: row.sort_order,
+  dueDate: row.due_date, someday: row.someday === 1, blocked: row.blocked === 1, completedAt: row.completed_at, sortOrder: row.sort_order,
   createdAt: row.created_at, updatedAt: row.updated_at,
 });
 const task = (row: TaskRow): Task => ({
   id: row.id, title: row.title, notes: row.notes, projectId: row.project_id,
-  startDate: row.start_date, startTime: row.start_time, dueDate: row.due_date, someday: row.someday === 1, completedAt: row.completed_at,
+  startDate: row.start_date, startTime: row.start_time, dueDate: row.due_date, someday: row.someday === 1, blocked: row.blocked === 1, completedAt: row.completed_at,
   sortOrder: row.sort_order, createdAt: row.created_at, updatedAt: row.updated_at,
 });
 
@@ -109,6 +109,10 @@ function ensureStartTime(startDate: string | null, startTime: string | null): vo
   if (startTime !== null && startDate === null) throw new HttpError(400, "Start time requires a start date");
 }
 
+function ensureHoldingState(someday: boolean | undefined, blocked: boolean | undefined): void {
+  if (someday && blocked) throw new HttpError(400, "An item cannot be both Someday and Blocked");
+}
+
 async function findProject(db: D1Database, id: string, tenantId: string): Promise<ProjectRow | null> {
   return db.prepare("SELECT * FROM projects WHERE id = ? AND tenant_id = ?").bind(id, tenantId).first<ProjectRow>();
 }
@@ -169,15 +173,16 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
   }
 
   if (path === "/v1/snapshot" && method === "GET") {
-    // Legacy clients do not understand Someday. They continue to receive only
-    // their old active/completed snapshot; 1.1 clients opt in explicitly.
+    // Older clients do not understand held states. Each newer client opts in
+    // explicitly, and its ETag is distinct from older snapshot representations.
     const includeSomeday = url.searchParams.get("includeSomeday") === "1";
+    const includeBlocked = url.searchParams.get("includeBlocked") === "1";
     // The revision is read before the rows, so a write landing in between can
     // only make the ETag older than the data, which costs one extra download
     // later and never hides a change.
     const revision = await env.DB.prepare("SELECT revision FROM tenants WHERE id = ?")
       .bind(tenantId).first<number>("revision");
-    const etag = revision === null ? null : `"r${revision}${includeSomeday ? "-s1" : ""}"`;
+    const etag = revision === null ? null : `"r${revision}${includeSomeday ? "-s1" : ""}${includeBlocked ? "-b1" : ""}"`;
     if (etag && req.headers.get("if-none-match") === etag) {
       return new Response(null, { status: 304, headers: { ETag: etag, "Cache-Control": "no-store" } });
     }
@@ -190,14 +195,17 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
       env.DB.prepare(`SELECT * FROM projects WHERE tenant_id = ?1
         AND (completed_at IS NULL OR completed_at >= ?2)
         AND (?3 = 1 OR someday = 0)
-        ORDER BY sort_order, created_at, id`).bind(tenantId, completedSince, includeSomeday ? 1 : 0),
+        AND (?4 = 1 OR blocked = 0)
+        ORDER BY sort_order, created_at, id`).bind(tenantId, completedSince, includeSomeday ? 1 : 0, includeBlocked ? 1 : 0),
       env.DB.prepare(`SELECT * FROM tasks WHERE tenant_id = ?1
         AND (completed_at IS NULL OR completed_at >= ?2)
         AND (project_id IS NULL OR project_id NOT IN
           (SELECT id FROM projects WHERE tenant_id = ?1 AND completed_at < ?2))
         AND (?3 = 1 OR (someday = 0 AND (project_id IS NULL OR project_id NOT IN
           (SELECT id FROM projects WHERE tenant_id = ?1 AND someday = 1))))
-        ORDER BY sort_order, created_at, id`).bind(tenantId, completedSince, includeSomeday ? 1 : 0),
+        AND (?4 = 1 OR (blocked = 0 AND (project_id IS NULL OR project_id NOT IN
+          (SELECT id FROM projects WHERE tenant_id = ?1 AND blocked = 1))))
+        ORDER BY sort_order, created_at, id`).bind(tenantId, completedSince, includeSomeday ? 1 : 0, includeBlocked ? 1 : 0),
     ]);
     const response = json({
       projects: (projects.results as ProjectRow[]).map(project),
@@ -211,7 +219,7 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
 
   if (path === "/v1/projects" && method === "GET") {
     const viewParam = url.searchParams.get("view") ?? "all";
-    if (!["available", "upcoming", "someday", "completed", "all"].includes(viewParam)) throw new HttpError(400, "Invalid view");
+    if (!["available", "upcoming", "blocked", "someday", "completed", "all"].includes(viewParam)) throw new HttpError(400, "Invalid view");
     const todayInput = url.searchParams.get("today");
     if (url.searchParams.has("today") && !parseToday(todayInput)) throw new HttpError(400, "Invalid today date");
     const timeInput = url.searchParams.get("time");
@@ -224,13 +232,14 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
   if (path === "/v1/projects" && method === "POST") {
     const input = ProjectInput.parse(await body(req));
     ensureStartTime(input.startDate, input.startTime);
+    ensureHoldingState(input.someday, input.blocked);
     const id = input.id ?? crypto.randomUUID();
     const saved = await write(() => env.DB.prepare(`INSERT INTO projects
-      (id, tenant_id, name, notes, start_date, start_time, due_date, someday, sort_order, created_at, updated_at)
-      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10
-      WHERE (SELECT COUNT(*) FROM projects WHERE tenant_id = ?2) < ?11
+      (id, tenant_id, name, notes, start_date, start_time, due_date, someday, blocked, sort_order, created_at, updated_at)
+      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11
+      WHERE (SELECT COUNT(*) FROM projects WHERE tenant_id = ?2) < ?12
       ON CONFLICT(id) DO NOTHING RETURNING *`)
-      .bind(id, tenantId, input.name, input.notes, input.startDate, input.startTime, input.dueDate, input.someday ? 1 : 0, input.sortOrder, now,
+      .bind(id, tenantId, input.name, input.notes, input.startDate, input.startTime, input.dueDate, input.someday ? 1 : 0, input.blocked ? 1 : 0, input.sortOrder, now,
         tenantLimits.projects).first<ProjectRow>());
     if (saved) return json({ project: project(saved) }, 201);
     const existing = await findProject(env.DB, id, tenantId);
@@ -240,7 +249,11 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
   if (path === "/v1/projects-with-tasks" && method === "POST") {
     const input = ProjectWithTasksInput.parse(await body(req));
     ensureStartTime(input.project.startDate, input.project.startTime);
-    for (const item of input.tasks) ensureStartTime(item.startDate, item.startTime);
+    ensureHoldingState(input.project.someday, input.project.blocked);
+    for (const item of input.tasks) {
+      ensureStartTime(item.startDate, item.startTime);
+      ensureHoldingState(item.someday, item.blocked);
+    }
     const projectId = input.project.id ?? crypto.randomUUID();
     const taskIds = input.tasks.map((item) => item.id ?? crypto.randomUUID());
     const existing = await findProject(env.DB, projectId, tenantId);
@@ -254,15 +267,15 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
     await ensureCapacity(env.DB, tenantId, { projects: 1, tasks: input.tasks.length });
     const statements = [
       env.DB.prepare(`INSERT INTO projects
-        (id, tenant_id, name, notes, start_date, start_time, due_date, someday, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`)
-        .bind(projectId, tenantId, input.project.name, input.project.notes, input.project.startDate,
-          input.project.startTime, input.project.dueDate, input.project.someday ? 1 : 0, input.project.sortOrder, now, now),
-      ...input.tasks.map((item, index) => env.DB.prepare(`INSERT INTO tasks
-        (id, tenant_id, title, notes, project_id, start_date, start_time, due_date, someday, sort_order, created_at, updated_at)
+        (id, tenant_id, name, notes, start_date, start_time, due_date, someday, blocked, sort_order, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`)
+        .bind(projectId, tenantId, input.project.name, input.project.notes, input.project.startDate,
+          input.project.startTime, input.project.dueDate, input.project.someday ? 1 : 0, input.project.blocked ? 1 : 0, input.project.sortOrder, now, now),
+      ...input.tasks.map((item, index) => env.DB.prepare(`INSERT INTO tasks
+        (id, tenant_id, title, notes, project_id, start_date, start_time, due_date, someday, blocked, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`)
         .bind(taskIds[index], tenantId, item.title, item.notes, projectId, item.startDate,
-          item.startTime, item.dueDate, item.someday ? 1 : 0, item.sortOrder, now, now)),
+          item.startTime, item.dueDate, item.someday ? 1 : 0, item.blocked ? 1 : 0, item.sortOrder, now, now)),
     ];
     let results: D1Result<ProjectRow | TaskRow>[];
     try { results = await env.DB.batch<ProjectRow | TaskRow>(statements); }
@@ -290,6 +303,7 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
       const input = ProjectPatch.parse(await body(req));
       if (!Object.keys(input).length) throw new HttpError(400, "No changes supplied");
       if (input.startDate === null && input.startTime) ensureStartTime(null, input.startTime);
+      ensureHoldingState(input.someday, input.blocked);
       const assignments: string[] = [];
       const values: Array<string | number | null> = [];
       if (input.name !== undefined) { assignments.push("name = ?"); values.push(input.name); }
@@ -297,7 +311,8 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
       if (input.startDate !== undefined) { assignments.push("start_date = ?"); values.push(input.startDate); }
       if (input.startTime !== undefined) { assignments.push("start_time = ?"); values.push(input.startTime); }
       if (input.dueDate !== undefined) { assignments.push("due_date = ?"); values.push(input.dueDate); }
-      if (input.someday !== undefined) { assignments.push("someday = ?"); values.push(input.someday ? 1 : 0); }
+      if (input.someday !== undefined || input.blocked === true) { assignments.push("someday = ?"); values.push(input.blocked ? 0 : input.someday ? 1 : 0); }
+      if (input.blocked !== undefined || input.someday === true) { assignments.push("blocked = ?"); values.push(input.someday ? 0 : input.blocked ? 1 : 0); }
       if (input.sortOrder !== undefined) { assignments.push("sort_order = ?"); values.push(input.sortOrder); }
       if (input.completed === true) { assignments.push("completed_at = COALESCE(completed_at, ?)"); values.push(now); }
       else if (input.completed === false) assignments.push("completed_at = NULL");
@@ -317,7 +332,7 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
 
   if (path === "/v1/tasks" && method === "GET") {
     const viewParam = url.searchParams.get("view") ?? "available";
-    if (!["available", "upcoming", "someday", "completed", "all"].includes(viewParam)) throw new HttpError(400, "Invalid view");
+    if (!["available", "upcoming", "blocked", "someday", "completed", "all"].includes(viewParam)) throw new HttpError(400, "Invalid view");
     const todayInput = url.searchParams.get("today");
     if (url.searchParams.has("today") && !parseToday(todayInput)) throw new HttpError(400, "Invalid today date");
     const timeInput = url.searchParams.get("time");
@@ -326,28 +341,29 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
     const currentTime = parseTime(timeInput) ?? timeInZone(new Date(now), env.DEFAULT_TIME_ZONE ?? "UTC");
     const [rows, projectRows] = await Promise.all([
       env.DB.prepare("SELECT * FROM tasks WHERE tenant_id = ? ORDER BY sort_order, created_at, id").bind(tenantId).all<TaskRow>(),
-      env.DB.prepare("SELECT id, start_date, start_time, someday, completed_at FROM projects WHERE tenant_id = ?")
-        .bind(tenantId).all<Pick<ProjectRow, "id" | "start_date" | "start_time" | "someday" | "completed_at">>(),
+      env.DB.prepare("SELECT id, start_date, start_time, someday, blocked, completed_at FROM projects WHERE tenant_id = ?")
+        .bind(tenantId).all<Pick<ProjectRow, "id" | "start_date" | "start_time" | "someday" | "blocked" | "completed_at">>(),
     ]);
     const parentProjects = new Map(projectRows.results.map((item) => [item.id, item]));
     return json({ tasks: rows.results.map(task).filter((item) => {
       const parent = parentProjects.get(item.projectId ?? "");
-      return inView(item, viewParam as TaskView, today, parent?.start_date, parent?.completed_at, currentTime, parent?.start_time, parent?.someday === 1);
+      return inView(item, viewParam as TaskView, today, parent?.start_date, parent?.completed_at, currentTime, parent?.start_time, parent?.someday === 1, parent?.blocked === 1);
     }), today });
   }
   if (path === "/v1/tasks" && method === "POST") {
     const input = TaskInput.parse(await body(req));
     ensureStartTime(input.startDate, input.startTime);
+    ensureHoldingState(input.someday, input.blocked);
     const id = input.id ?? crypto.randomUUID();
     // The project's owner is checked by a D1 trigger and the item cap by the
     // WHERE clause, so a new task costs one statement.
     const saved = await write(() => env.DB.prepare(`INSERT INTO tasks
-      (id, tenant_id, title, notes, project_id, start_date, start_time, due_date, someday, sort_order, created_at, updated_at)
-      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11
-      WHERE (SELECT COUNT(*) FROM tasks WHERE tenant_id = ?2) < ?12
+      (id, tenant_id, title, notes, project_id, start_date, start_time, due_date, someday, blocked, sort_order, created_at, updated_at)
+      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12
+      WHERE (SELECT COUNT(*) FROM tasks WHERE tenant_id = ?2) < ?13
       ON CONFLICT(id) DO NOTHING RETURNING *`).bind(
       id, tenantId, input.title, input.notes, input.projectId, input.startDate, input.startTime, input.dueDate,
-      input.someday ? 1 : 0, input.sortOrder, now, tenantLimits.tasks,
+      input.someday ? 1 : 0, input.blocked ? 1 : 0, input.sortOrder, now, tenantLimits.tasks,
     ).first<TaskRow>());
     if (saved) return json({ task: task(saved) }, 201);
     const existing = await findTask(env.DB, id, tenantId);
@@ -362,6 +378,7 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
       const input = TaskPatch.parse(await body(req));
       if (!Object.keys(input).length) throw new HttpError(400, "No changes supplied");
       if (input.startDate === null && input.startTime) ensureStartTime(null, input.startTime);
+      ensureHoldingState(input.someday, input.blocked);
       const assignments: string[] = [];
       const values: Array<string | number | null> = [];
       const set = (column: string, value: string | number | null) => {
@@ -374,7 +391,8 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
       if (input.startDate !== undefined) set("start_date", input.startDate);
       if (input.startTime !== undefined) set("start_time", input.startTime);
       if (input.dueDate !== undefined) set("due_date", input.dueDate);
-      if (input.someday !== undefined) set("someday", input.someday ? 1 : 0);
+      if (input.someday !== undefined || input.blocked === true) set("someday", input.blocked ? 0 : input.someday ? 1 : 0);
+      if (input.blocked !== undefined || input.someday === true) set("blocked", input.someday ? 0 : input.blocked ? 1 : 0);
       if (input.sortOrder !== undefined) set("sort_order", input.sortOrder);
       if (input.completed === true) {
         assignments.push("completed_at = COALESCE(completed_at, ?)");
