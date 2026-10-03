@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { appName, routeApi, json, type Env } from "./api";
-import { ProjectInput, ProjectPatch, TaskInput, TaskPatch } from "./model";
+import { ProjectInput, ProjectPatch, TaskInput, TaskPatch, listViews } from "./model";
 import { type Principal } from "./auth";
 import { authChallenge } from "./oauth";
 
@@ -20,12 +20,12 @@ const id = z.uuid();
 const protocolVersions = new Set(["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26"]);
 const tools: Tool[] = [
   {
-    name: "list_tasks", title: "List Tasks", description: "List tasks. Available hides future-start, Blocked, and Someday tasks. Upcoming shows future-start tasks; Blocked and Someday are explicit held views, including tasks held by their projects. Pass today (YYYY-MM-DD) and time (local 24-hour HH:mm) together to use your local clock, or omit both for the server's default time zone.",
-    schema: z.object({ view: z.enum(["available", "upcoming", "blocked", "someday", "completed", "all"]).default("available"), today: z.string().optional(), time: z.string().optional() }),
+    name: "list_tasks", title: "List Tasks", description: "List tasks. Available hides future-start, Blocked, and Someday tasks. Upcoming shows future-start tasks. Active is Available plus Upcoming. Blocked and Someday show held tasks, including tasks held by their projects. All returns every task, including held and completed ones. Pass today (YYYY-MM-DD) and time (local 24-hour HH:mm) together to use your local clock, or omit both for the server's default time zone.",
+    schema: z.object({ view: z.enum(listViews).default("available"), today: z.string().optional(), time: z.string().optional() }),
     method: "GET", path: (a) => `/v1/tasks?view=${encodeURIComponent(String(a.view))}${a.today ? `&today=${encodeURIComponent(String(a.today))}` : ""}${a.time ? `&time=${encodeURIComponent(String(a.time))}` : ""}`, readOnly: true,
   },
-  { name: "list_projects", title: "List Projects", description: "List completable projects with their dates and notes. Available hides future-start, Blocked, and Someday projects; Blocked and Someday are explicit held views. Pass today and time together for your local clock.",
-    schema: z.object({ view: z.enum(["available", "upcoming", "blocked", "someday", "completed", "all"]).default("available"), today: z.string().optional(), time: z.string().optional() }),
+  { name: "list_projects", title: "List Projects", description: "List completable projects with their dates and notes. Available hides future-start, Blocked, and Someday projects. Upcoming shows future-start projects. Active is Available plus Upcoming. Blocked and Someday show held projects. All returns every project, including held and completed ones. Pass today and time together for your local clock.",
+    schema: z.object({ view: z.enum(listViews).default("available"), today: z.string().optional(), time: z.string().optional() }),
     method: "GET", path: (a) => `/v1/projects?view=${encodeURIComponent(String(a.view))}${a.today ? `&today=${encodeURIComponent(String(a.today))}` : ""}${a.time ? `&time=${encodeURIComponent(String(a.time))}` : ""}`, readOnly: true },
   { name: "create_task", title: "Create Task", description: "Create a task with independent start and due dates in YYYY-MM-DD format. Optional startTime is local 24-hour HH:mm and requires startDate. Set blocked=true or someday=true to hold it outside Available; these states are mutually exclusive.", schema: TaskInput,
     method: "POST", path: () => "/v1/tasks", payload: (a) => a, readOnly: false },

@@ -95,22 +95,26 @@ describe("Someday compatibility", () => {
     expect(body.tasks.find((item) => item.title === "Blocked task")?.blocked).toBe(true);
   });
 
-  it("exposes an explicit Someday view without changing the old all view", async () => {
+  it("exposes held views, keeps them out of Active, and includes everything in All", async () => {
     const { env } = environment();
     const tasks = async (view: string) => {
       const response = await routeApi(new Request(`https://api.00todo.com/v1/tasks?view=${view}`), env, principal);
       return (await response.json() as { tasks: Array<{ title: string }> }).tasks.map((item) => item.title);
     };
-    expect(await tasks("all")).toEqual(["Active task"]);
+    expect(await tasks("active")).toEqual(["Active task"]);
+    expect(await tasks("all")).toEqual(["Active task", "Someday task", "Held by project", "Blocked task", "Blocked by project"]);
     expect(await tasks("someday")).toEqual(["Someday task", "Held by project"]);
     expect(await tasks("blocked")).toEqual(["Blocked task", "Blocked by project"]);
     const projects = async (view: string) => {
       const response = await routeApi(new Request(`https://api.00todo.com/v1/projects?view=${view}`), env, principal);
       return (await response.json() as { projects: Array<{ name: string }> }).projects.map((item) => item.name);
     };
-    expect(await projects("all")).toEqual(["Active"]);
+    expect(await projects("active")).toEqual(["Active"]);
+    expect(await projects("all")).toEqual(["Active", "Someday project", "Blocked project"]);
     expect(await projects("someday")).toEqual(["Someday project"]);
     expect(await projects("blocked")).toEqual(["Blocked project"]);
+    const unspecified = await routeApi(new Request("https://api.00todo.com/v1/projects"), env, principal);
+    expect((await unspecified.json() as { projects: Array<{ name: string }> }).projects.map((item) => item.name)).toEqual(["Active"]);
   });
 
   it("rejects an item marked Blocked and Someday at the same time", async () => {

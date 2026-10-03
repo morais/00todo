@@ -1,4 +1,4 @@
-import { ProjectInput, ProjectPatch, ProjectWithTasksInput, TaskInput, TaskPatch, inView, projectInView, parseToday, parseTime, type Project, type ProjectView, type Task, type TaskView } from "./model";
+import { ProjectInput, ProjectPatch, ProjectWithTasksInput, TaskInput, TaskPatch, inView, listViews, projectInView, parseToday, parseTime, type Project, type ProjectView, type Task, type TaskView } from "./model";
 import { ZodError } from "zod";
 import { tenantForPrincipal, type Principal } from "./auth";
 import { capacityProblem, tenantLimits } from "./rateLimit";
@@ -218,8 +218,11 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
   }
 
   if (path === "/v1/projects" && method === "GET") {
-    const viewParam = url.searchParams.get("view") ?? "all";
-    if (!["available", "upcoming", "blocked", "someday", "completed", "all"].includes(viewParam)) throw new HttpError(400, "Invalid view");
+    // Projects default to Active rather than Available, as tasks do: until
+    // All included held and completed items, it was the default here, and
+    // Active is the closest match for callers that omit the view.
+    const viewParam = url.searchParams.get("view") ?? "active";
+    if (!(listViews as readonly string[]).includes(viewParam)) throw new HttpError(400, "Invalid view");
     const todayInput = url.searchParams.get("today");
     if (url.searchParams.has("today") && !parseToday(todayInput)) throw new HttpError(400, "Invalid today date");
     const timeInput = url.searchParams.get("time");
@@ -332,7 +335,7 @@ async function dispatch(req: Request, env: Env, principal: Principal): Promise<R
 
   if (path === "/v1/tasks" && method === "GET") {
     const viewParam = url.searchParams.get("view") ?? "available";
-    if (!["available", "upcoming", "blocked", "someday", "completed", "all"].includes(viewParam)) throw new HttpError(400, "Invalid view");
+    if (!(listViews as readonly string[]).includes(viewParam)) throw new HttpError(400, "Invalid view");
     const todayInput = url.searchParams.get("today");
     if (url.searchParams.has("today") && !parseToday(todayInput)) throw new HttpError(400, "Invalid today date");
     const timeInput = url.searchParams.get("time");

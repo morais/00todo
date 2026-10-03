@@ -24,7 +24,7 @@ describe("task visibility", () => {
   it("holds Someday items outside legacy views until explicitly moved back", () => {
     const heldTask = { ...sample, someday: true, startDate: "2026-09-01" };
     const heldProject = { ...sampleProject, someday: true, startDate: "2026-09-01" };
-    for (const view of ["available", "upcoming", "all"] as const) {
+    for (const view of ["available", "upcoming", "active"] as const) {
       expect(inView(heldTask, view, "2026-10-02")).toBe(false);
       expect(projectInView(heldProject, view, "2026-10-02")).toBe(false);
       expect(inView(sample, view, "2026-10-02", null, null, "12:00", null, true)).toBe(false);
@@ -40,7 +40,7 @@ describe("task visibility", () => {
   it("holds Blocked tasks and projects, including inherited project blockers", () => {
     const blockedTask = { ...sample, blocked: true };
     const blockedProject = { ...sampleProject, blocked: true };
-    for (const view of ["available", "upcoming", "all"] as const) {
+    for (const view of ["available", "upcoming", "active"] as const) {
       expect(inView(blockedTask, view, "2026-10-03")).toBe(false);
       expect(projectInView(blockedProject, view, "2026-10-03")).toBe(false);
       expect(inView(sample, view, "2026-10-03", null, null, "12:00", null, false, true)).toBe(false);
@@ -52,6 +52,23 @@ describe("task visibility", () => {
     expect(inView({ ...blockedTask, someday: true }, "blocked", "2026-10-03")).toBe(false);
     expect(inView({ ...blockedTask, someday: true }, "someday", "2026-10-03")).toBe(true);
     expect(inView({ ...blockedTask, completedAt: "2026-10-03T12:00:00Z" }, "completed", "2026-10-03")).toBe(true);
+  });
+
+  it("lists open work in Active and every item in All", () => {
+    const upcoming = { ...sample, startDate: "2026-10-04" };
+    const done = { ...sample, completedAt: "2026-10-02T12:00:00Z" };
+    const held = [{ ...sample, someday: true }, { ...sample, blocked: true }];
+    expect(inView(sample, "active", "2026-10-03")).toBe(true);
+    expect(inView(upcoming, "active", "2026-10-03")).toBe(true);
+    expect(inView(done, "active", "2026-10-03")).toBe(false);
+    expect(inView(sample, "active", "2026-10-03", null, "2026-10-02T12:00:00Z")).toBe(false);
+    for (const task of held) expect(inView(task, "active", "2026-10-03")).toBe(false);
+    for (const task of [sample, upcoming, done, ...held]) expect(inView(task, "all", "2026-10-03")).toBe(true);
+    expect(inView(sample, "all", "2026-10-03", null, "2026-10-02T12:00:00Z", "12:00", null, true, false)).toBe(true);
+    const projects = [sampleProject, { ...sampleProject, startDate: "2026-10-04" }, { ...sampleProject, completedAt: "2026-10-02T12:00:00Z" },
+      { ...sampleProject, someday: true }, { ...sampleProject, blocked: true }];
+    expect(projects.map((item) => projectInView(item, "active", "2026-10-03"))).toEqual([true, true, false, false, false]);
+    expect(projects.every((item) => projectInView(item, "all", "2026-10-03"))).toBe(true);
   });
 
   it("keeps same-day timed starts Upcoming until their start time", () => {

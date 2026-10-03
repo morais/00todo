@@ -92,33 +92,38 @@ export type Project = {
   updatedAt: string;
 };
 
-export type TaskView = "available" | "upcoming" | "blocked" | "someday" | "completed" | "all";
-export type ProjectView = "available" | "upcoming" | "blocked" | "someday" | "completed" | "all";
+// Active is Available plus Upcoming: open work that is neither held nor done.
+// All is every item, including held and completed ones.
+export const listViews = ["available", "upcoming", "active", "blocked", "someday", "completed", "all"] as const;
+export type TaskView = typeof listViews[number];
+export type ProjectView = TaskView;
 
 export function startsLater(startDate: string | null, startTime: string | null, today: string, nowTime = "23:59"): boolean {
   return startDate !== null && (startDate > today || (startDate === today && startTime !== null && startTime > nowTime));
 }
 
 export function projectInView(project: Project, view: ProjectView, today: string, nowTime = "23:59"): boolean {
+  if (view === "all") return true;
   if (view === "completed") return project.completedAt !== null;
   if (view === "someday") return project.completedAt === null && project.someday;
   if (project.someday) return false;
   if (view === "blocked") return project.completedAt === null && project.blocked;
   if (project.blocked) return false;
-  if (view === "all") return true;
   if (project.completedAt !== null) return false;
+  if (view === "active") return true;
   const future = startsLater(project.startDate, project.startTime, today, nowTime);
   return view === "upcoming" ? future : !future;
 }
 
 export function inView(task: Task, view: TaskView, today: string, projectStartDate: string | null = null, projectCompletedAt: string | null = null, nowTime = "23:59", projectStartTime: string | null = null, projectSomeday = false, projectBlocked = false): boolean {
+  if (view === "all") return true;
   if (view === "completed") return task.completedAt !== null;
   if (view === "someday") return task.completedAt === null && projectCompletedAt === null && (task.someday || projectSomeday);
   if (task.someday || projectSomeday) return false;
   if (view === "blocked") return task.completedAt === null && projectCompletedAt === null && (task.blocked || projectBlocked);
   if (task.blocked || projectBlocked) return false;
-  if (view === "all") return true;
   if (task.completedAt !== null || projectCompletedAt !== null) return false;
+  if (view === "active") return true;
   const future = startsLater(task.startDate, task.startTime, today, nowTime)
     || startsLater(projectStartDate, projectStartTime, today, nowTime);
   return view === "upcoming" ? future : !future;
