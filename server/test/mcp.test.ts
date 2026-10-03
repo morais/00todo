@@ -11,8 +11,8 @@ it("exposes task and project tools with JSON schemas", async () => {
     method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
   });
   const response = await routeMcp(request, env, principal);
-  const body = await response.json() as { result: { tools: Array<{ name: string; inputSchema: object; annotations: {
-    readOnlyHint: boolean; openWorldHint: boolean; destructiveHint: boolean;
+  const body = await response.json() as { result: { tools: Array<{ name: string; title: string; inputSchema: object; annotations: {
+    title: string; readOnlyHint: boolean; openWorldHint: boolean; destructiveHint: boolean;
   } }> } };
   expect(body.result.tools.map((tool) => tool.name)).toContain("create_task");
   expect(body.result.tools.map((tool) => tool.name)).toContain("list_projects");
@@ -22,6 +22,9 @@ it("exposes task and project tools with JSON schemas", async () => {
   expect(createTask.inputSchema.required).toEqual(["title"]);
   expect(updateTask.inputSchema.required).toEqual(["id"]);
   for (const tool of body.result.tools) {
+    expect(tool.title).toMatch(/\S/);
+    expect(tool.annotations.title).toBe(tool.title);
+    expect(tool.name.length).toBeLessThanOrEqual(64);
     expect(typeof tool.annotations.readOnlyHint).toBe("boolean");
     expect(tool.annotations.openWorldHint).toBe(false);
     expect(typeof tool.annotations.destructiveHint).toBe("boolean");

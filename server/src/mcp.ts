@@ -6,6 +6,7 @@ import { authChallenge } from "./oauth";
 
 type Tool = {
   name: string;
+  title: string;
   description: string;
   schema: z.ZodType<Record<string, unknown>>;
   method: string;
@@ -19,24 +20,24 @@ const id = z.uuid();
 const protocolVersions = new Set(["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26"]);
 const tools: Tool[] = [
   {
-    name: "list_tasks", description: "List tasks. Available hides future-start, Blocked, and Someday tasks. Upcoming shows future-start tasks; Blocked and Someday are explicit held views, including tasks held by their projects. Pass today (YYYY-MM-DD) and time (local 24-hour HH:mm) together to use your local clock, or omit both for the server's default time zone.",
+    name: "list_tasks", title: "List Tasks", description: "List tasks. Available hides future-start, Blocked, and Someday tasks. Upcoming shows future-start tasks; Blocked and Someday are explicit held views, including tasks held by their projects. Pass today (YYYY-MM-DD) and time (local 24-hour HH:mm) together to use your local clock, or omit both for the server's default time zone.",
     schema: z.object({ view: z.enum(["available", "upcoming", "blocked", "someday", "completed", "all"]).default("available"), today: z.string().optional(), time: z.string().optional() }),
     method: "GET", path: (a) => `/v1/tasks?view=${encodeURIComponent(String(a.view))}${a.today ? `&today=${encodeURIComponent(String(a.today))}` : ""}${a.time ? `&time=${encodeURIComponent(String(a.time))}` : ""}`, readOnly: true,
   },
-  { name: "list_projects", description: "List completable projects with their dates and notes. Available hides future-start, Blocked, and Someday projects; Blocked and Someday are explicit held views. Pass today and time together for your local clock.",
+  { name: "list_projects", title: "List Projects", description: "List completable projects with their dates and notes. Available hides future-start, Blocked, and Someday projects; Blocked and Someday are explicit held views. Pass today and time together for your local clock.",
     schema: z.object({ view: z.enum(["available", "upcoming", "blocked", "someday", "completed", "all"]).default("available"), today: z.string().optional(), time: z.string().optional() }),
     method: "GET", path: (a) => `/v1/projects?view=${encodeURIComponent(String(a.view))}${a.today ? `&today=${encodeURIComponent(String(a.today))}` : ""}${a.time ? `&time=${encodeURIComponent(String(a.time))}` : ""}`, readOnly: true },
-  { name: "create_task", description: "Create a task with independent start and due dates in YYYY-MM-DD format. Optional startTime is local 24-hour HH:mm and requires startDate. Set blocked=true or someday=true to hold it outside Available; these states are mutually exclusive.", schema: TaskInput,
+  { name: "create_task", title: "Create Task", description: "Create a task with independent start and due dates in YYYY-MM-DD format. Optional startTime is local 24-hour HH:mm and requires startDate. Set blocked=true or someday=true to hold it outside Available; these states are mutually exclusive.", schema: TaskInput,
     method: "POST", path: () => "/v1/tasks", payload: (a) => a, readOnly: false },
-  { name: "update_task", description: "Edit a task's title, notes, project, start date/time, due date, Blocked or Someday state, sort order, or completion.",
+  { name: "update_task", title: "Update Task", description: "Edit a task's title, notes, project, start date/time, due date, Blocked or Someday state, sort order, or completion.",
     schema: TaskPatch.extend({ id }), method: "PATCH", path: (a) => `/v1/tasks/${a.id}`,
     payload: ({ id: _id, ...a }) => a, readOnly: false, destructive: true },
-  { name: "delete_task", description: "Permanently delete a task.", schema: z.object({ id }), method: "DELETE", path: (a) => `/v1/tasks/${a.id}`, readOnly: false, destructive: true },
-  { name: "create_project", description: "Create a project with notes, independent start and due dates, optional local startTime (HH:mm, requires startDate), and subtasks added with create_task/projectId. Set blocked=true or someday=true to hold it and its subtasks outside Available; these states are mutually exclusive.", schema: ProjectInput,
+  { name: "delete_task", title: "Delete Task", description: "Permanently delete a task.", schema: z.object({ id }), method: "DELETE", path: (a) => `/v1/tasks/${a.id}`, readOnly: false, destructive: true },
+  { name: "create_project", title: "Create Project", description: "Create a project with notes, independent start and due dates, optional local startTime (HH:mm, requires startDate), and subtasks added with create_task/projectId. Set blocked=true or someday=true to hold it and its subtasks outside Available; these states are mutually exclusive.", schema: ProjectInput,
     method: "POST", path: () => "/v1/projects", payload: (a) => a, readOnly: false },
-  { name: "update_project", description: "Edit a project's name, notes, start date/time, due date, Blocked or Someday state, sort order, or completion.", schema: ProjectPatch.extend({ id }),
+  { name: "update_project", title: "Update Project", description: "Edit a project's name, notes, start date/time, due date, Blocked or Someday state, sort order, or completion.", schema: ProjectPatch.extend({ id }),
     method: "PATCH", path: (a) => `/v1/projects/${a.id}`, payload: ({ id: _id, ...a }) => a, readOnly: false, destructive: true },
-  { name: "delete_project", description: "Delete a project. Its subtasks become standalone tasks.", schema: z.object({ id }),
+  { name: "delete_project", title: "Delete Project", description: "Delete a project. Its subtasks become standalone tasks.", schema: z.object({ id }),
     method: "DELETE", path: (a) => `/v1/projects/${a.id}`, readOnly: false, destructive: true },
 ];
 
@@ -46,9 +47,10 @@ let toolList: unknown[] | undefined;
 function listTools(): unknown[] {
   toolList ??= tools.map((tool) => ({
     name: tool.name,
+    title: tool.title,
     description: tool.description,
     inputSchema: z.toJSONSchema(tool.schema, { io: "input" }),
-    annotations: { readOnlyHint: tool.readOnly, openWorldHint: false, destructiveHint: Boolean(tool.destructive), idempotentHint: tool.method !== "POST" },
+    annotations: { title: tool.title, readOnlyHint: tool.readOnly, openWorldHint: false, destructiveHint: Boolean(tool.destructive), idempotentHint: tool.method !== "POST" },
   }));
   return toolList;
 }
