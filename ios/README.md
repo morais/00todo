@@ -39,7 +39,7 @@ The share-sheet offers both the `00Todo` app icon in the sharing row and an “A
 
 Before signing in, Try with demo data opens the app with sample tasks and projects across Available, Upcoming (including Blocked and Someday), and Completed. Demo changes stay in memory: nothing is saved, queued, sent to the server, or shown in widgets. A banner and Settings offer Sign in with Apple, which discards the demo data.
 
-For repeatable app-only promotional captures on iPhone and iPad, run [`marketing/screenshots/capture-ios.sh`](https://github.com/morais/00todo-www/blob/main/marketing/screenshots/capture-ios.sh) from the sibling `00todo-www` repository. It uses an isolated simulator fixture based on the same demo data, XCUITest, and a provenance-checked compositor; it does not touch the signed-in account. See [screenshot pipeline](https://github.com/morais/00todo-www/blob/main/marketing/screenshots/README.md).
+For repeatable app-only promotional captures on iPhone, iPad, and iPhone Duo, run [`marketing/screenshots/capture-ios.sh`](https://github.com/morais/00todo-www/blob/main/marketing/screenshots/capture-ios.sh) from the sibling `00todo-www` repository. It uses an isolated simulator fixture based on the same demo data, XCUITest, and a provenance-checked compositor; it does not touch the signed-in account. See [screenshot pipeline](https://github.com/morais/00todo-www/blob/main/marketing/screenshots/README.md).
 
 For a simulator compile without signing:
 
