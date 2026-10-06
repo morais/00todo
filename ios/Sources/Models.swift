@@ -61,10 +61,11 @@ struct MCPConnection: Codable, Identifiable, Equatable {
 }
 
 enum UpcomingGroup: Int, CaseIterable {
-    case tomorrow, sevenDays, fourteenDays, thirtyDays, future
+    case laterToday, tomorrow, sevenDays, fourteenDays, thirtyDays, future
 
     var title: String {
         switch self {
+        case .laterToday: "Later today"
         case .tomorrow: "Tomorrow"
         case .sevenDays: "Next 7 days"
         case .fourteenDays: "Next 2 weeks"
@@ -117,6 +118,8 @@ enum TodoDates {
         func day(_ offset: Int) -> String {
             string(from: calendar.date(byAdding: .day, value: offset, to: today) ?? today)
         }
+        // Only a start time keeps today's items out of Available.
+        if startDate <= day(0) { return .laterToday }
         if startDate == day(1) { return .tomorrow }
         if startDate <= day(7) { return .sevenDays }
         if startDate <= day(14) { return .fourteenDays }

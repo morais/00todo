@@ -63,6 +63,7 @@ import Foundation
         func startDate(_ days: Int) -> String {
             TodoDates.string(from: Calendar.current.date(byAdding: .day, value: days, to: today)!)
         }
+        precondition(TodoDates.upcomingGroup(for: startDate(0), at: now) == .laterToday)
         precondition(TodoDates.upcomingGroup(for: startDate(1), at: now) == .tomorrow)
         precondition(TodoDates.upcomingGroup(for: startDate(2), at: now) == .sevenDays)
         precondition(TodoDates.upcomingGroup(for: startDate(7), at: now) == .sevenDays)
