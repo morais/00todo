@@ -22,6 +22,15 @@ import Foundation
         precondition(TodoDates.startLabel(date: day(1), time: nil, now: now) == "Starts tomorrow")
         precondition(TodoDates.startLabel(date: day(9), time: nil, now: now) == "Starts in 9 days")
         precondition(TodoDates.startLabel(date: day(0), time: "14:30", now: now).hasPrefix("Starts today at "))
+        // 1 Oct 2026 is a Thursday.
+        let shortcuts = Dictionary(uniqueKeysWithValues: TodoDates.startShortcuts(now: now).map { ($0.title, TodoDates.string(from: $0.date)) })
+        precondition(shortcuts["Tomorrow"] == day(1) && shortcuts["This weekend"] == day(2))
+        precondition(shortcuts["Next month"] == "2026-11-01")
+        precondition(shortcuts["Next week"] == day(4))
+        let friday = calendar.date(byAdding: .day, value: 1, to: now)!
+        precondition(!TodoDates.startShortcuts(now: friday).contains { $0.title.hasSuffix("weekend") })
+        let saturday = calendar.date(byAdding: .day, value: 2, to: now)!
+        precondition(TodoDates.startShortcuts(now: saturday).contains { $0.title == "Next weekend" })
         precondition(TodoDates.isOverdue(day(-1), at: now) && !TodoDates.isOverdue(day(0), at: now))
 
         // A 1.0 cached item lacks the new field and must still decode as active.

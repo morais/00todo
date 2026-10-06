@@ -127,6 +127,30 @@ enum TodoDates {
         return .future
     }
 
+    /// Quick picks for a start date. Picks that land on the same day as an
+    /// earlier one (Friday's weekend is tomorrow) are left out.
+    static func startShortcuts(now: Date = Date()) -> [(title: String, date: Date)] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        func next(weekday: Int) -> Date? {
+            calendar.nextDate(after: today, matching: DateComponents(weekday: weekday), matchingPolicy: .nextTime)
+        }
+        let candidates: [(String, Date?)] = [
+            ("Tomorrow", calendar.date(byAdding: .day, value: 1, to: today)),
+            (calendar.isDateInWeekend(today) ? "Next weekend" : "This weekend",
+             next(weekday: 7)),
+            // Monday, even where calendars start the week on Sunday.
+            ("Next week", next(weekday: 2)),
+            ("Next month", calendar.date(byAdding: .month, value: 1, to: today)
+                .flatMap { calendar.dateInterval(of: .month, for: $0)?.start })
+        ]
+        var seen = Set<String>()
+        return candidates.compactMap { title, date in
+            guard let date, seen.insert(string(from: date)).inserted else { return nil }
+            return (title, date)
+        }
+    }
+
     static func startLabel(date: String, time: String?, now: Date = Date()) -> String {
         let days = daysFromToday(date, now: now)
         let relative = days >= 2 ? "in \(days) days" : relativeDay(date, now: now)
