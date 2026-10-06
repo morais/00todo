@@ -56,10 +56,12 @@ struct ContentView: View {
     var body: some View {
         Group {
             if store.isConfigured {
-                TasksView(pendingQuickAdd: $pendingQuickAdd, pendingWidgetDestination: $pendingWidgetDestination)
-                    .safeAreaInset(edge: .top, spacing: 0) {
-                        if store.isDemo && !store.hidesDemoNotice { DemoNotice() }
-                    }
+                // Stacked rather than a safe-area inset: split view navigation
+                // bars ignore the inset and would slide under the notice.
+                VStack(spacing: 0) {
+                    if store.isDemo && !store.hidesDemoNotice { DemoNotice() }
+                    TasksView(pendingQuickAdd: $pendingQuickAdd, pendingWidgetDestination: $pendingWidgetDestination)
+                }
             } else {
                 SignInView()
             }
@@ -157,6 +159,8 @@ struct TasksView: View {
     @Binding var pendingQuickAdd: QuickAddLaunch?
     @Binding var pendingWidgetDestination: WidgetDestination?
     @State private var filter: TaskFilter = .available
+    /// Each tab's selected row, shown beside the list when there is room.
+    @State private var selections: [TaskFilter: WidgetDestination] = [:]
     @AppStorage("showProjectTasksInLists") private var showProjectTasks = true
     @State private var showNewItem = false
     @State private var showSettings = false
@@ -246,9 +250,7 @@ struct TasksView: View {
                                       showsBlockedLabel: Bool = true) -> some View {
         switch item {
         case .project(let project):
-            NavigationLink {
-                ProjectTasksView(project: project)
-            } label: {
+            NavigationLink(value: WidgetDestination.project(project.id)) {
                 ProjectRow(
                     project: project,
                     openCount: store.tasks.filter { $0.projectId == project.id && $0.completedAt == nil }.count,
@@ -257,9 +259,7 @@ struct TasksView: View {
                 ) { Task { await store.toggle(project) } }
             }
         case .task(let task):
-            NavigationLink {
-                TaskEditor(task: task)
-            } label: {
+            NavigationLink(value: WidgetDestination.task(task.id)) {
                 TaskRow(task: task, project: store.projects.first { $0.id == task.projectId },
                         showsSomedayLabel: showsSomedayLabel,
                         showsBlockedLabel: showsBlockedLabel) { Task { await store.toggle(task) } }
@@ -271,7 +271,7 @@ struct TasksView: View {
         let items = visibleItems(for: filter)
         let blockedItems = filter == .upcoming ? visibleItems(for: .blocked) : []
         let somedayItems = filter == .upcoming ? visibleItems(for: .someday) : []
-        return List {
+        return List(selection: Binding(get: { selections[filter] }, set: { selections[filter] = $0 })) {
             if items.isEmpty && blockedItems.isEmpty && somedayItems.isEmpty {
                 ContentUnavailableView(filter == .available ? "All clear" : filter == .someday ? "Nothing in Someday" : "No items",
                                        systemImage: filter == .someday ? "tray" : "checkmark.circle")
@@ -309,15 +309,8 @@ struct TasksView: View {
             })
     }
 
-    var body: some View {
-        NavigationStack {
-            TabView(selection: $filter) {
-                ForEach(TaskFilter.allCases.filter { $0 != .blocked && $0 != .someday }) { choice in
-                    list(for: choice)
-                        .tabItem { Label(choice.rawValue, systemImage: choice.symbol) }
-                        .tag(choice)
-                }
-            }
+    private func listColumn(for filter: TaskFilter) -> some View {
+        list(for: filter)
             .navigationTitle("\(AppBrand.name)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -344,45 +337,79 @@ struct TasksView: View {
                         .disabled(!store.isConfigured)
                 }
             }
-            .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) {
-                now = $0
-                store.importSharedTasks()
-                Task { await store.updateCurrentBadge(at: now) }
-                if store.hasPendingChanges { Task { await store.pushPendingChanges() } }
+            .navigationSplitViewColumnWidth(min: 320, ideal: 420, max: 520)
+    }
+
+    private func exists(_ selection: WidgetDestination) -> Bool {
+        switch selection {
+        case .task(let id): store.tasks.contains { $0.id == id }
+        case .project(let id): store.projects.contains { $0.id == id }
+        }
+    }
+
+    @ViewBuilder private func detail(for selection: WidgetDestination?) -> some View {
+        switch selection {
+        case .task(let id):
+            if let task = store.tasks.first(where: { $0.id == id }) {
+                TaskEditor(task: task).id(id)
+            } else {
+                ContentUnavailableView("Task unavailable", systemImage: "checklist")
             }
-            .onChange(of: scenePhase) { _, phase in if phase == .active { now = Date() } }
-            .onChange(of: showProjectTasks) { _, _ in Task { await store.syncBadge() } }
-            .onChange(of: pendingWidgetDestination) { _, destination in
-                if destination != nil {
-                    showNewItem = false
-                    showSettings = false
+        case .project(let id):
+            if let project = store.projects.first(where: { $0.id == id }) {
+                ProjectTasksView(project: project).id(id)
+            } else {
+                ContentUnavailableView("Project unavailable", systemImage: "folder")
+            }
+        case nil:
+            ContentUnavailableView("Nothing selected", systemImage: "checklist",
+                                   description: Text("Choose a task or project to see it here."))
+        }
+    }
+
+    var body: some View {
+        // On compact widths each split view collapses into a stack, so a row
+        // tap still navigates into the task as before.
+        TabView(selection: $filter) {
+            ForEach(TaskFilter.allCases.filter { $0 != .blocked && $0 != .someday }) { choice in
+                NavigationSplitView {
+                    listColumn(for: choice)
+                } detail: {
+                    NavigationStack { detail(for: selections[choice]) }
+                        .id(selections[choice])
                 }
+                .navigationSplitViewStyle(.balanced)
+                .tabItem { Label(choice.rawValue, systemImage: choice.symbol) }
+                .tag(choice)
             }
-            .navigationDestination(item: $pendingWidgetDestination) { destination in
-                switch destination {
-                case .task(let id):
-                    if let task = store.tasks.first(where: { $0.id == id }) {
-                        TaskEditor(task: task)
-                    } else {
-                        ContentUnavailableView("Task unavailable", systemImage: "checklist")
-                    }
-                case .project(let id):
-                    if let project = store.projects.first(where: { $0.id == id }) {
-                        ProjectTasksView(project: project)
-                    } else {
-                        ContentUnavailableView("Project unavailable", systemImage: "folder")
-                    }
-                }
-            }
-            .sheet(isPresented: $showNewItem) { NavigationStack { NewItemView() } }
-            .sheet(item: $pendingQuickAdd) { launch in
-                NavigationStack { NewItemView(initialKind: .quickAdd, startWithVoice: launch == .voice) }
-            }
-            .sheet(isPresented: $showSettings) { SettingsView() }
-            .overlay(alignment: .bottom) {
-                if let message = store.message {
-                    Text(message).font(.caption).padding(10).background(.regularMaterial, in: Capsule()).padding()
-                }
+        }
+        .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) {
+            now = $0
+            store.importSharedTasks()
+            Task { await store.updateCurrentBadge(at: now) }
+            if store.hasPendingChanges { Task { await store.pushPendingChanges() } }
+        }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { now = Date() } }
+        .onChange(of: showProjectTasks) { _, _ in Task { await store.syncBadge() } }
+        .onChange(of: store.tasks.map(\.id) + store.projects.map(\.id)) { _, _ in
+            // A deleted task or project leaves nothing to show beside the list.
+            selections = selections.filter { exists($0.value) }
+        }
+        .onChange(of: pendingWidgetDestination, initial: true) { _, destination in
+            guard let destination else { return }
+            showNewItem = false
+            showSettings = false
+            selections[filter] = destination
+            pendingWidgetDestination = nil
+        }
+        .sheet(isPresented: $showNewItem) { NavigationStack { NewItemView() } }
+        .sheet(item: $pendingQuickAdd) { launch in
+            NavigationStack { NewItemView(initialKind: .quickAdd, startWithVoice: launch == .voice) }
+        }
+        .sheet(isPresented: $showSettings) { SettingsView() }
+        .overlay(alignment: .bottom) {
+            if let message = store.message {
+                Text(message).font(.caption).padding(10).background(.regularMaterial, in: Capsule()).padding()
             }
         }
     }

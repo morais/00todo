@@ -41,18 +41,40 @@ struct TaskDraft {
     }
 }
 
+extension TaskDraft {
+    /// The payload as stable JSON, so drafts that would store the same task compare equal.
+    var savedForm: Data? { try? JSONSerialization.data(withJSONObject: payload, options: .sortedKeys) }
+}
+
+/// Edits an existing task. Changes save automatically a moment after typing
+/// stops and when the editor goes away; Revert restores the task as it was
+/// when the editor opened.
 struct TaskEditor: View {
     @Environment(TodoStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var draft: TaskDraft
-    @State private var saving = false
+    @State private var original: TaskDraft
+    @State private var lastSaved: TaskDraft
+    @State private var deleted = false
     @State private var errorText: String?
     @State private var confirmDelete = false
-    let task: TodoTask?
+    let task: TodoTask
 
-    init(task: TodoTask? = nil, projectId: String? = nil) {
+    init(task: TodoTask) {
         self.task = task
-        _draft = State(initialValue: TaskDraft(task: task, projectId: projectId))
+        let draft = TaskDraft(task: task)
+        _draft = State(initialValue: draft)
+        _original = State(initialValue: draft)
+        _lastSaved = State(initialValue: draft)
+    }
+
+    /// Everything as edited, keeping the last saved title while the field is
+    /// blank or too long, so other edits are not lost.
+    private var savableDraft: TaskDraft? {
+        var result = draft
+        let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if title.isEmpty || title.count > 240 { result.title = lastSaved.title }
+        return result.notes.count <= 20_000 ? result : nil
     }
 
     var body: some View {
@@ -106,7 +128,7 @@ struct TaskEditor: View {
                         Text(project.name).tag(Optional(project.id))
                     }
                 }
-                if task != nil, let project = store.projects.first(where: { $0.id == draft.projectId }) {
+                if let project = store.projects.first(where: { $0.id == draft.projectId }) {
                     NavigationLink {
                         ProjectTasksView(project: project)
                     } label: {
@@ -115,46 +137,45 @@ struct TaskEditor: View {
                 }
             }
 
-            if let task {
-                Section {
-                    Button {
-                        Task { await store.toggle(store.tasks.first(where: { $0.id == task.id }) ?? task) }
-                    } label: {
-                        let current = store.tasks.first(where: { $0.id == task.id }) ?? task
-                        Label(current.completedAt == nil ? "Complete task" : "Reopen task",
-                              systemImage: current.completedAt == nil ? "checkmark.circle" : "arrow.uturn.backward.circle")
-                    }
-                    .disabled(saving)
-                    Button(role: .destructive) { confirmDelete = true } label: {
-                        Label("Delete task", systemImage: "trash")
-                    }
-                    .disabled(saving)
+            Section {
+                Button {
+                    Task { await store.toggle(store.tasks.first(where: { $0.id == task.id }) ?? task) }
+                } label: {
+                    let current = store.tasks.first(where: { $0.id == task.id }) ?? task
+                    Label(current.completedAt == nil ? "Complete task" : "Reopen task",
+                          systemImage: current.completedAt == nil ? "checkmark.circle" : "arrow.uturn.backward.circle")
                 }
-                .confirmationDialog("Delete this task?", isPresented: $confirmDelete) {
-                    Button("Delete", role: .destructive) {
-                        Task {
-                            do { try await store.deleteTask(task.id); dismiss() }
-                            catch { errorText = error.localizedDescription }
-                        }
+                Button(role: .destructive) { confirmDelete = true } label: {
+                    Label("Delete task", systemImage: "trash")
+                }
+            }
+            .confirmationDialog("Delete this task?", isPresented: $confirmDelete) {
+                Button("Delete", role: .destructive) {
+                    deleted = true
+                    Task {
+                        do { try await store.deleteTask(task.id); dismiss() }
+                        catch { deleted = false; errorText = error.localizedDescription }
                     }
                 }
             }
         }
-        .navigationTitle(task == nil ? "New task" : "Edit task")
+        .navigationTitle("Edit task")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if task == nil {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Revert") {
+                    draft = original
+                    save()
                 }
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { save() }
-                    .disabled(saving || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                              || draft.title.count > 240 || draft.notes.count > 20_000)
+                .disabled(draft.savedForm == original.savedForm && lastSaved.savedForm == original.savedForm)
             }
         }
-        .alert("Couldn't save", isPresented: Binding(
+        .task(id: draft.savedForm) {
+            try? await Task.sleep(for: .seconds(1))
+            if !Task.isCancelled { save() }
+        }
+        .onDisappear { save() }
+        .alert("Couldn't delete", isPresented: Binding(
             get: { errorText != nil },
             set: { if !$0 { errorText = nil } }
         )) { Button("OK", role: .cancel) {} } message: { Text(errorText ?? "") }
@@ -165,16 +186,13 @@ struct TaskEditor: View {
     }
 
     private func save() {
-        guard !saving, !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              draft.title.count <= 240, draft.notes.count <= 20_000 else { return }
-        saving = true
+        guard !deleted, let next = savableDraft, next.savedForm != lastSaved.savedForm else { return }
+        lastSaved = next
+        let id = task.id
+        // Reported through the store: the editor may already be gone.
         Task {
-            defer { saving = false }
-            do {
-                if let task { try await store.updateTask(task.id, draft: draft) }
-                else { try await store.createTask(draft) }
-                dismiss()
-            } catch { errorText = error.localizedDescription }
+            do { try await store.updateTask(id, draft: next) }
+            catch { store.message = error.localizedDescription }
         }
     }
 }
