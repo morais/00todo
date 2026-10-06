@@ -58,7 +58,7 @@ import Foundation
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date())!
         let twoDays = Calendar.current.date(byAdding: .day, value: 2, to: Date())!
         precondition(TodoDates.startLabel(date: TodoDates.string(from: tomorrow), time: nil) == "Starts tomorrow")
-        precondition(TodoDates.startLabel(date: TodoDates.string(from: twoDays), time: "09:30") == "Starts in 2 days at \(TodoDates.displayTime("09:30"))")
+        precondition(TodoDates.startLabel(date: TodoDates.string(from: twoDays), time: "09:30") == "Starts \(twoDays.formatted(.dateTime.weekday(.wide))) at \(TodoDates.displayTime("09:30"))")
         let today = Calendar.current.startOfDay(for: now)
         func startDate(_ days: Int) -> String {
             TodoDates.string(from: Calendar.current.date(byAdding: .day, value: days, to: today)!)

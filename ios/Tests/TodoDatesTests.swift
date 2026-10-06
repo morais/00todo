@@ -9,7 +9,8 @@ import Foundation
         precondition(TodoDates.relativeDay(day(0), now: now) == "today")
         precondition(TodoDates.relativeDay(day(1), now: now) == "tomorrow")
         precondition(TodoDates.relativeDay(day(-1), now: now) == "yesterday")
-        precondition(TodoDates.relativeDay(day(3), now: now) == "in 3 days")
+        let sunday = TodoDates.date(from: day(3)).formatted(.dateTime.weekday(.wide))
+        precondition(TodoDates.relativeDay(day(3), now: now) == sunday)
         precondition(TodoDates.dueLabel(day(0), now: now) == "Due today")
 
         // Further away, a localized date replaces the raw YYYY-MM-DD value.
@@ -20,6 +21,8 @@ import Foundation
         precondition(!TodoDates.relativeDay(day(10), now: now).contains("2026"))
 
         precondition(TodoDates.startLabel(date: day(1), time: nil, now: now) == "Starts tomorrow")
+        precondition(TodoDates.startLabel(date: day(3), time: nil, now: now) == "Starts \(sunday)")
+        precondition(TodoDates.startLabel(date: day(7), time: nil, now: now) == "Starts in 7 days")
         precondition(TodoDates.startLabel(date: day(9), time: nil, now: now) == "Starts in 9 days")
         precondition(TodoDates.startLabel(date: day(0), time: "14:30", now: now).hasPrefix("Starts today at "))
         // 1 Oct 2026 is a Thursday.

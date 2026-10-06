@@ -153,7 +153,7 @@ enum TodoDates {
 
     static func startLabel(date: String, time: String?, now: Date = Date()) -> String {
         let days = daysFromToday(date, now: now)
-        let relative = days >= 2 ? "in \(days) days" : relativeDay(date, now: now)
+        let relative = days >= 7 ? "in \(days) days" : relativeDay(date, now: now)
         return "Starts \(relative)\(time.map { " at \(displayTime($0))" } ?? "")"
     }
 
@@ -161,7 +161,8 @@ enum TodoDates {
         "Due \(relativeDay(date, now: now))"
     }
 
-    /// "today", "tomorrow", "yesterday", "in 3 days", or a localized short
+    /// "today", "tomorrow", "yesterday", a weekday such as "Friday" within the
+    /// coming week, or a localized short
     /// date such as "5 Oct" (with the year when it differs), never the raw
     /// YYYY-MM-DD value.
     static func relativeDay(_ value: String, now: Date = Date()) -> String {
@@ -170,7 +171,7 @@ enum TodoDates {
         case 0: return "today"
         case 1: return "tomorrow"
         case -1: return "yesterday"
-        case 2...6: return "in \(days) days"
+        case 2...6: return date(from: value).formatted(.dateTime.weekday(.wide))
         default:
             let day = date(from: value)
             let sameYear = Calendar.current.component(.year, from: day) == Calendar.current.component(.year, from: now)
