@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const server = dirname(dirname(fileURLToPath(import.meta.url)));
 const { accessCode } = JSON.parse(readFileSync(join(server, ".review-access.json"), "utf8"));
-const origin = "https://api.00todo.com";
+const origin = process.env.PUBLIC_ORIGIN ?? "https://api.00todo.com";
 const callback = "https://review.example/callback";
 const verifier = randomBytes(32).toString("base64url");
 const challenge = createHash("sha256").update(verifier).digest("base64url");
