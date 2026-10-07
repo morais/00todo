@@ -14,7 +14,7 @@ original license. The source is included so the derived 00Todo assets are
 reproducible; it is not a general-purpose permission to reuse 00Widget art.
 The 00Todo assets have their own [license](LICENSE), separate from the code.
 
-Regenerate from the repository root with Python 3.10+ and Pillow 11.3.0:
+Regenerate from the repository root with Python 3.10+ and Pillow 12.3.0:
 
 ```sh
 python3 -m pip install -r docs/brand/requirements.txt
