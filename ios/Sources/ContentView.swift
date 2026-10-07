@@ -347,6 +347,11 @@ struct TasksView: View {
         }
     }
 
+    private var completedSelections: Set<WidgetDestination> {
+        Set(store.tasks.filter { $0.completedAt != nil }.map { .task($0.id) })
+            .union(store.projects.filter { $0.completedAt != nil }.map { .project($0.id) })
+    }
+
     @ViewBuilder private func detail(for selection: WidgetDestination?) -> some View {
         switch selection {
         case .task(let id):
@@ -394,6 +399,15 @@ struct TasksView: View {
         .onChange(of: store.tasks.map(\.id) + store.projects.map(\.id)) { _, _ in
             // A deleted task or project leaves nothing to show beside the list.
             selections = selections.filter { exists($0.value) }
+        }
+        .onChange(of: completedSelections) { _, completed in
+            // Available and Upcoming no longer contain completed items, so
+            // their detail panes should not keep showing the departed row.
+            for choice in [TaskFilter.available, .upcoming] {
+                if let selection = selections[choice], completed.contains(selection) {
+                    selections[choice] = nil
+                }
+            }
         }
         .onChange(of: pendingWidgetDestination, initial: true) { _, destination in
             guard let destination else { return }
