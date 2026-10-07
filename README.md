@@ -20,5 +20,9 @@ Dates are calendar days (`YYYY-MM-DD`), not timestamps. Optional start times are
 
 ## License
 
-Source code is MIT licensed. The 00Todo name and brand assets are excluded;
-see [LICENSE](./LICENSE) and [docs/brand/LICENSE](./docs/brand/LICENSE).
+Source code is MIT licensed; see [LICENSE](./LICENSE).
+
+The 00Todo name, logos, icons, wordmarks, mascot, and other brand artwork,
+including the files in `docs/brand` and the app assets generated from them,
+are excluded from the MIT License and governed by
+[docs/brand/LICENSE](./docs/brand/LICENSE). No trademark rights are granted.
