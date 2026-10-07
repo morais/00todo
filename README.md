@@ -14,7 +14,7 @@ The shape follows sister project 00Widget: a native client, a Worker with REST a
 
 See [server/README.md](server/README.md) for Worker setup, [ios/README.md](ios/README.md) for the app, and [docs/brand/README.md](docs/brand/README.md) for the identity. Neither client needs a manually shared API token.
 
-Three app-only promotional screenshots for iPhone and iPad can be recaptured from the sibling website repository with [`00todo-www/marketing/screenshots/capture-ios.sh`](https://github.com/morais/00todo-www/blob/main/marketing/screenshots/capture-ios.sh). The screenshot-only simulator fixture uses the same sample data as the sign-in screen's Try with demo data, without signing in or changing account data. See [the screenshot pipeline](https://github.com/morais/00todo-www/blob/main/marketing/screenshots/README.md) for raw captures, compositions, and verification manifests.
+The screenshot-only simulator fixture in `ios/ScreenshotUITests` uses the same sample data as the sign-in screen's Try with demo data, without signing in or changing account data.
 
 Dates are calendar days (`YYYY-MM-DD`), not timestamps. Optional start times are local wall-clock values (`HH:mm`). The iOS app compares with the device's local clock. API/MCP callers can pass `today=YYYY-MM-DD` and `time=HH:mm`, or the Worker uses `DEFAULT_TIME_ZONE`.
 
