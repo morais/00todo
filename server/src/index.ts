@@ -49,7 +49,7 @@ export default {
       if (raw.length > 16000) return json({ error: "Request too large" }, 413);
       const form = new URLSearchParams(raw);
       return isDashboardAppleState(form.get("state"))
-        ? dashboardAppleCallback(req, env, form) : appleCallback(req, env);
+        ? dashboardAppleCallback(req, env, form, ctx) : appleCallback(req, env, ctx);
     }
     if (path === "/auth/review/callback" && method === "POST") return reviewCallback(req, env);
     if (path === "/oauth/consent" && method === "GET") return showConsent(req, env);
@@ -60,7 +60,7 @@ export default {
     if (path === "/dashboard/login/apple" && method === "GET") return dashboardAppleLogin(env);
     if (path === "/dashboard/login/review" && method === "POST") return dashboardReviewLogin(req, env);
     if (path === "/dashboard/logout" && method === "POST") return dashboardLogout(req, env);
-    if (path === "/v1/auth/apple" && method === "POST") return signInWithApple(req, env);
+    if (path === "/v1/auth/apple" && method === "POST") return signInWithApple(req, env, ctx);
     if (path === "/mcp") {
       const principal = await authenticate(req, env, "mcp");
       if (!principal) return authChallenge(env);

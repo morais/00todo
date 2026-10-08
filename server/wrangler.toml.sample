@@ -35,6 +35,21 @@ APPLE_KEY_ID = "REPLACE_WITH_SIGN_IN_WITH_APPLE_KEY_ID"
 # the gitignored production wrangler.toml; unset means the route returns 404.
 # OPENAI_APPS_CHALLENGE_TOKEN = "REPLACE_WITH_OPENAI_APPS_CHALLENGE_TOKEN"
 
+# Optional: email the operator when Sign in with Apple creates a new tenant.
+# Commented out because it requires Cloudflare Email Routing on a domain in
+# your account, and an uncommented binding would fail `wrangler deploy` for
+# anyone who has not set that up.
+#
+# The destination address must be a verified Email Routing destination.
+# [[send_email]]
+# name = "SIGNUP_ALERTS"
+# destination_address = "you@example.com"
+#
+# Then set the recipient (and optionally the sender, which must be on an
+# Email Routing domain you control; it defaults to the recipient) under [vars]:
+# SIGNUP_ALERT_TO = "you@example.com"
+# SIGNUP_ALERT_FROM = "alerts@example.com"
+
 # Replace with the hostname you own before deployment. The planned production
 # host is 00todo.com; api.example.com keeps this public sample deploy-safe.
 [[routes]]

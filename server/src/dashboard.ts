@@ -161,7 +161,7 @@ export function isDashboardAppleState(state: string | null): boolean {
   return Boolean(state && /^ttdash_[A-Za-z0-9_-]{32}$/.test(state));
 }
 
-export async function dashboardAppleCallback(req: Request, env: Env, form: URLSearchParams): Promise<Response> {
+export async function dashboardAppleCallback(req: Request, env: Env, form: URLSearchParams, ctx?: ExecutionContext): Promise<Response> {
   const flow = await verified<LoginFlow>(env, "flow", cookie(req, flowCookieName));
   const invalid = () => {
     const response = page(env, '<h1>Sign-in expired</h1><p>Please start again from <a href="/dashboard/login">the login page</a>.</p>', 401);
@@ -179,7 +179,7 @@ export async function dashboardAppleCallback(req: Request, env: Env, form: URLSe
     const exchanged = await exchangeAppleCode(env, code, env.APPLE_WEB_CLIENT_ID!, env.APPLE_WEB_REDIRECT_URI!);
     const verifiedClaims = await verifyAppleIdToken(exchanged.idToken, env.APPLE_WEB_CLIENT_ID!, flow.nonce);
     if (!constantTimeEqual(claims.sub, verifiedClaims.sub)) throw new Error("Apple account changed");
-    const tenant = await findOrCreateTenant(env, claims.sub, appleEmail(verifiedClaims));
+    const tenant = await findOrCreateTenant(env, claims.sub, appleEmail(verifiedClaims), { source: "dashboard", ctx });
     const session: Session = {
       kind: "apple", tenantId: tenant.id, appleSubject: claims.sub,
       exp: Math.floor(Date.now() / 1000) + sessionLifetimeSeconds,
