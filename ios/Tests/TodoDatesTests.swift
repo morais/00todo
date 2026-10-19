@@ -34,6 +34,10 @@ import Foundation
         precondition(!TodoDates.startShortcuts(now: friday).contains { $0.title.hasSuffix("weekend") })
         let saturday = calendar.date(byAdding: .day, value: 2, to: now)!
         precondition(TodoDates.startShortcuts(now: saturday).contains { $0.title == "Next weekend" })
+        precondition(TodoDates.startTimeShortcuts == ["08:00", "13:00", "18:00"])
+        precondition(TodoDates.startTimeShortcuts.allSatisfy {
+            TodoDates.timeString(from: TodoDates.timeDate(from: $0)) == $0
+        })
         precondition(TodoDates.isOverdue(day(-1), at: now) && !TodoDates.isOverdue(day(0), at: now))
 
         // A 1.0 cached item lacks the new field and must still decode as active.

@@ -151,6 +151,9 @@ enum TodoDates {
         }
     }
 
+    /// One-tap start times, stored in the same HH:mm format as task and project schedules.
+    static let startTimeShortcuts = ["08:00", "13:00", "18:00"]
+
     static func startLabel(date: String, time: String?, now: Date = Date()) -> String {
         let days = daysFromToday(date, now: now)
         let relative = days >= 7 ? "in \(days) days" : relativeDay(date, now: now)
