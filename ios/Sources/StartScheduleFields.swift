@@ -8,19 +8,39 @@ struct StartScheduleFields: View {
 
     var body: some View {
         Toggle("Start date", isOn: $hasStart)
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack {
-                ForEach(TodoDates.startShortcuts(), id: \.title) { shortcut in
-                    let isSelected = hasStart && TodoDates.string(from: start) == TodoDates.string(from: shortcut.date)
-                    Button(shortcut.title) {
-                        start = shortcut.date
-                        hasStart = true
+        TimelineView(.periodic(from: .now, by: 30)) { timeline in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack {
+                    ForEach(TodoDates.startShortcuts(now: timeline.date), id: \.title) { shortcut in
+                        let isSelected = hasStart && TodoDates.string(from: start) == TodoDates.string(from: shortcut.date)
+                        Button(shortcut.title) {
+                            start = shortcut.date
+                            hasStart = true
+                        }
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.capsule)
+                        .controlSize(.small)
+                        .tint(isSelected ? .accentColor : .secondary)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                     }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.capsule)
-                    .controlSize(.small)
-                    .tint(isSelected ? .accentColor : .secondary)
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    ForEach(TodoDates.todayStartTimeShortcuts(now: timeline.date), id: \.time) { shortcut in
+                        let isSelected = hasStart && hasStartTime
+                            && TodoDates.string(from: start) == TodoDates.string(from: shortcut.date)
+                            && TodoDates.timeString(from: startTime) == shortcut.time
+                        Button("Today \(TodoDates.displayTime(shortcut.time))") {
+                            // A chip may linger briefly while the periodic view updates.
+                            guard shortcut.date > Date() else { return }
+                            start = shortcut.date
+                            startTime = shortcut.date
+                            hasStart = true
+                            hasStartTime = true
+                        }
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.capsule)
+                        .controlSize(.small)
+                        .tint(isSelected ? .accentColor : .secondary)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    }
                 }
             }
         }

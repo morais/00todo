@@ -38,6 +38,21 @@ import Foundation
         precondition(TodoDates.startTimeShortcuts.allSatisfy {
             TodoDates.timeString(from: TodoDates.timeDate(from: $0)) == $0
         })
+        func todayTimes(hour: Int, minute: Int = 0) -> [String] {
+            let instant = calendar.date(from: DateComponents(year: 2026, month: 10, day: 1,
+                                                              hour: hour, minute: minute))!
+            return TodoDates.todayStartTimeShortcuts(now: instant).map { shortcut in
+                precondition(TodoDates.string(from: shortcut.date) == TodoDates.string(from: instant))
+                precondition(TodoDates.timeString(from: shortcut.date) == shortcut.time)
+                precondition(shortcut.date > instant)
+                return shortcut.time
+            }
+        }
+        precondition(todayTimes(hour: 7, minute: 59) == ["08:00", "13:00", "18:00"])
+        precondition(todayTimes(hour: 8) == ["13:00", "18:00"])
+        precondition(todayTimes(hour: 12) == ["13:00", "18:00"])
+        precondition(todayTimes(hour: 13) == ["18:00"])
+        precondition(todayTimes(hour: 18).isEmpty)
         precondition(TodoDates.isOverdue(day(-1), at: now) && !TodoDates.isOverdue(day(0), at: now))
 
         // A 1.0 cached item lacks the new field and must still decode as active.

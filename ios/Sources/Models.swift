@@ -154,6 +154,24 @@ enum TodoDates {
     /// One-tap start times, stored in the same HH:mm format as task and project schedules.
     static let startTimeShortcuts = ["08:00", "13:00", "18:00"]
 
+    /// Today's preset times that have not passed yet. Each carries the date
+    /// and time so a single shortcut can fill both start fields.
+    static func todayStartTimeShortcuts(now: Date = Date()) -> [(time: String, date: Date)] {
+        let calendar = Calendar.current
+        let day = calendar.dateComponents([.year, .month, .day], from: now)
+        return startTimeShortcuts.compactMap { time in
+            let parts = time.split(separator: ":").compactMap { Int($0) }
+            guard parts.count == 2 else { return nil }
+            var components = day
+            components.hour = parts[0]
+            components.minute = parts[1]
+            components.second = 0
+            guard let date = calendar.date(from: components), date > now,
+                  calendar.isDate(date, inSameDayAs: now) else { return nil }
+            return (time, date)
+        }
+    }
+
     static func startLabel(date: String, time: String?, now: Date = Date()) -> String {
         let days = daysFromToday(date, now: now)
         let relative = days >= 7 ? "in \(days) days" : relativeDay(date, now: now)
