@@ -78,19 +78,13 @@ struct MCPConnectionsView: View {
                         Label("Connect Claude", systemImage: "arrow.up.forward.app")
                     }
                 }
-                Text("Using Claude Code? Run this command, then open /mcp in Claude Code to finish sign-in.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                MCPGuideCode(text: "claude mcp add --transport http 00todo \(endpoint)", label: "Claude Code command")
                 Link("Claude connector instructions", destination: URL(string: "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp")!)
             }
 
             Section("ChatGPT") {
-                MCPGuideStep(1, "On ChatGPT web, enable Developer mode in Settings → Security and login if your account or workspace allows it.")
-                MCPGuideStep(2, "Open ChatGPT Plugins, choose Add, and enter \(AppBrand.name) and the MCP address below.")
-                MCPGuideStep(3, "Create the connection and complete the Apple sign-in and access approval when prompted.")
-                MCPGuideCode(text: endpoint, label: "ChatGPT MCP address")
-                Link("ChatGPT MCP setup instructions", destination: URL(string: "https://developers.openai.com/plugins/deploy/connect-chatgpt")!)
+                MCPGuideStep(1, "Open the \(AppBrand.name) plugin in ChatGPT and install it.")
+                MCPGuideStep(2, "Connect your account, then sign in with Apple and approve access when prompted.")
+                Link("Open \(AppBrand.name) in ChatGPT", destination: URL(string: "https://chatgpt.com/plugins/plugin_asdk_app_6abed97129e881918f5d85cad9f0163f")!)
             }
 
             Section("Manus") {
@@ -101,11 +95,11 @@ struct MCPConnectionsView: View {
                 Link("Manus custom MCP instructions", destination: URL(string: "https://manus.im/docs/integrations/custom-mcp")!)
             }
 
-            Section("OpenCode") {
-                MCPGuideStep(1, "Run this command to add the remote server and start OAuth.")
-                MCPGuideStep(2, "Approve \(AppBrand.name) access in the browser window that opens.")
-                MCPGuideCode(text: "opencode mcp add 00todo --url \(endpoint) && opencode mcp auth 00todo", label: "OpenCode command")
-                Link("OpenCode MCP instructions", destination: URL(string: "https://opencode.ai/docs/mcp-servers/")!)
+            Section("Claude Code") {
+                Text("Run this command, then open /mcp in Claude Code to finish sign-in.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                MCPGuideCode(text: "claude mcp add --transport http 00todo \(endpoint)", label: "Claude Code command")
             }
 
             Section("Codex") {
@@ -118,6 +112,13 @@ struct MCPConnectionsView: View {
                     .foregroundStyle(.secondary)
                 MCPGuideCode(text: "codex mcp add 00todo --url \(endpoint) && codex mcp login 00todo", label: "Codex command")
                 Link("Codex MCP instructions", destination: URL(string: "https://learn.chatgpt.com/docs/extend/mcp")!)
+            }
+
+            Section("OpenCode") {
+                MCPGuideStep(1, "Run this command to add the remote server and start OAuth.")
+                MCPGuideStep(2, "Approve \(AppBrand.name) access in the browser window that opens.")
+                MCPGuideCode(text: "opencode mcp add 00todo --url \(endpoint) && opencode mcp auth 00todo", label: "OpenCode command")
+                Link("OpenCode MCP instructions", destination: URL(string: "https://opencode.ai/docs/mcp-servers/")!)
             }
 
             Section("Other MCP clients") {
