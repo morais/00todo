@@ -14,14 +14,6 @@ struct MCPConnectionsView: View {
         store.serverAddress.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/mcp"
     }
 
-    private var claudeConnectorURL: URL? {
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-._~")
-        guard let escaped = endpoint.addingPercentEncoding(withAllowedCharacters: allowed),
-              let name = AppBrand.name.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
-        return URL(string: "https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=\(name)&connectorUrl=\(escaped)")
-    }
-
     var body: some View {
         List {
             Section {
@@ -71,14 +63,9 @@ struct MCPConnectionsView: View {
             }
 
             Section("Claude") {
-                MCPGuideStep(1, "Open Claude’s custom connectors and add \(AppBrand.name). The button below fills in the address.")
-                MCPGuideStep(2, "Connect it, then sign in to \(AppBrand.name) with Apple and approve access.")
-                if let claudeConnectorURL {
-                    Link(destination: claudeConnectorURL) {
-                        Label("Connect Claude", systemImage: "arrow.up.forward.app")
-                    }
-                }
-                Link("Claude connector instructions", destination: URL(string: "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp")!)
+                MCPGuideStep(1, "Open the \(AppBrand.name) connector in the Claude Directory and add it.")
+                MCPGuideStep(2, "Connect your account, then sign in with Apple and approve access when prompted.")
+                Link("Add \(AppBrand.name) to Claude", destination: URL(string: "https://claude.ai/directory/00todo")!)
             }
 
             Section("ChatGPT") {
