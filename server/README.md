@@ -79,6 +79,14 @@ Create requests may include a client-generated UUID `id` for a task, project, or
 
 `POST /mcp` supports JSON-RPC `initialize`, `ping`, `tools/list`, and `tools/call`. Tools list/create/update/delete tasks and projects and use the same validation as REST. The endpoint returns a `WWW-Authenticate` challenge with protected-resource metadata when authentication is absent. The endpoint is stateless; OAuth is required to obtain a bearer token.
 
+Successful `list_tasks` and `list_projects` calls append a `setup` object alongside the existing data, in both text and structured content. Tool names, descriptions, input schemas, annotations, scopes, and plugin packages are unchanged. Connecting a plugin, initializing MCP, or listing tools does not trigger setup guidance; writes and failed reads retain their existing responses.
+
+`setup.status` is `ready` after a verified native Apple sign-in, or for an allowlisted prepared reviewer tenant with an active review credential. `unknown` means insufficient native evidence and asks whether the app is already configured, with optional instructions and the [App Store link](https://apps.apple.com/app/id6816729167). Guidance keeps tools usable, asks for the same Apple account, and rechecks with the same read tool while keeping the plugin connected. No email, Apple subject, account ID, credential, or sign-in timestamp is added to the response. `finish_setup` is reserved for native sign-in with unmet required setup; 00Todo currently requires nothing beyond native sign-in, so it does not emit that state. Notifications, voice, Apple Intelligence, tasks, and projects are not setup prerequisites.
+
+Migration `0014_native_sign_in.sql` adds `tenants.native_first_signed_in_at` and backfills the earliest retained app-credential creation timestamp. App credentials have only been issued after verified native sign-in. Retained revoked/expired app credentials remain valid historical evidence; MCP credentials, browser sessions, tenant creation dates, email, and task/project activity do not. Invalid timestamps and already-swept credentials leave the marker unknown. New app-credential issuance and the first marker are committed atomically; later native sign-ins, logout, and auth cleanup preserve it. Web OAuth and dashboard sign-ins never set it.
+
+Before the November 2026 release, the production aggregate audit found six tenants, two with retained app credentials (four records, all valid timestamps), two MCP-connected tenants without native evidence, and one active reviewer credential. No personal account details were collected in the audit. Apply the migration before deploying, then run `node scripts/smoke-review.mjs` to verify production reviewer OAuth and both read tools; its temporary MCP grant is revoked afterward.
+
 ## Checks
 
 `npm run typecheck` and `npm test` cover models and MCP behavior.

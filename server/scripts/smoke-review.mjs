@@ -67,12 +67,23 @@ try {
   };
   const catalog = await rpc("tools/list", {}, 1);
   if (!catalog.result.tools.some((tool) => tool.name === "list_tasks")) throw new Error("Missing task tools");
+  const catalogHash = createHash("sha256").update(JSON.stringify(catalog.result.tools)).digest("hex");
+  if (catalogHash !== "d1f680cbe755b06373fdafae6197ea67a4a4eb9a761c7337331bea6ed7876839") {
+    throw new Error("Released tool catalog changed");
+  }
   const tasks = await rpc("tools/call", { name: "list_tasks", arguments: { view: "all" } }, 2);
   const payload = JSON.stringify(tasks.result?.structuredContent ?? {});
   if (!payload.includes("Review release notes") || !payload.includes("Plan project launch")) {
     throw new Error("Dedicated reviewer demo tasks not returned");
   }
-  console.log("Review OAuth, consent, MCP tools, and dedicated demo tasks: passed.");
+  if (tasks.result.structuredContent.setup?.status !== "ready") throw new Error("Prepared reviewer setup not ready");
+  if (JSON.stringify(tasks.result.structuredContent) !== tasks.result.content[0].text) throw new Error("MCP response formats differ");
+  const projects = await rpc("tools/call", { name: "list_projects", arguments: { view: "all" } }, 3);
+  if (projects.result?.structuredContent?.setup?.status !== "ready"
+    || !projects.result.structuredContent.projects.some((project) => project.name === "Weekend shopping")) {
+    throw new Error("Reviewer project data or setup missing");
+  }
+  console.log("Review OAuth, consent, unchanged MCP tools, demo task/project data, and ready setup: passed.");
 } finally {
   if (tokenHash) {
     execFileSync("npx", ["wrangler", "d1", "execute", "00todo", "--remote", "--command",

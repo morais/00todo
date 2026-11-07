@@ -102,11 +102,23 @@ export async function issueCredential(
   const id = crypto.randomUUID();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + (kind === "app" ? 90 : 365) * 86400000).toISOString();
-  await env.DB.prepare(`INSERT INTO credentials
+  const insert = env.DB.prepare(`INSERT INTO credentials
     (id, token_hash, tenant_id, kind, audience, scopes, label, created_at, expires_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     id, tokenHash, tenantId, kind, audience(env, kind), scopes.join(" "), label.slice(0, 120), now.toISOString(), expiresAt,
-  ).run();
+  );
+  if (kind === "app") {
+    // The only app issuer is the verified native Apple sign-in route. Persist
+    // its first successful credential issuance atomically, before any sweep
+    // can remove the credential. Web sign-ins only issue MCP/browser sessions.
+    await env.DB.batch([
+      insert,
+      env.DB.prepare(`UPDATE tenants SET native_first_signed_in_at = ?
+        WHERE id = ? AND native_first_signed_in_at IS NULL`).bind(now.toISOString(), tenantId),
+    ]);
+  } else {
+    await insert.run();
+  }
   return { token, expiresAt };
 }
 

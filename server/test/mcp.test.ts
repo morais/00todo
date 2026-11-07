@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { routeMcp } from "../src/mcp";
 import type { Env } from "../src/api";
-import type { Principal } from "../src/auth";
+import { sha256Hex, type Principal } from "../src/auth";
 
 const env = {} as Env;
 const principal = { tenantId: "test", kind: "mcp", scopes: ["todo:read", "todo:write"], tokenHash: "test" } as Principal;
@@ -14,6 +14,8 @@ it("exposes task and project tools with JSON schemas", async () => {
   const body = await response.json() as { result: { tools: Array<{ name: string; title: string; inputSchema: object; annotations: {
     title: string; readOnlyHint: boolean; openWorldHint: boolean; destructiveHint: boolean;
   } }> } };
+  // Pin the released tool catalog, including descriptions, schemas and hints.
+  expect(await sha256Hex(JSON.stringify(body.result.tools))).toMatchInlineSnapshot(`"d1f680cbe755b06373fdafae6197ea67a4a4eb9a761c7337331bea6ed7876839"`);
   expect(body.result.tools.map((tool) => tool.name)).toContain("create_task");
   expect(body.result.tools.map((tool) => tool.name)).toContain("list_projects");
   expect(body.result.tools[0].inputSchema).toHaveProperty("type", "object");

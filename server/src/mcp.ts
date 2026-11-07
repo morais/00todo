@@ -3,6 +3,7 @@ import { appName, routeApi, json, type Env } from "./api";
 import { ProjectInput, ProjectPatch, TaskInput, TaskPatch, listViews } from "./model";
 import { type Principal } from "./auth";
 import { authChallenge } from "./oauth";
+import { accountSetup } from "./setup";
 
 type Tool = {
   name: string;
@@ -112,5 +113,6 @@ export async function routeMcp(req: Request, env: Env, principal: Principal): Pr
   const response = await routeApi(restRequest, env, principal);
   const value = await response.json() as Record<string, unknown>;
   if (!response.ok) return rpcResult(requestId, { content: [{ type: "text", text: String(value.error ?? "Request failed") }], isError: true });
+  if (tool.readOnly) value.setup = await accountSetup(env, principal, tool.name);
   return rpcResult(requestId, { content: [{ type: "text", text: JSON.stringify(value) }], structuredContent: value });
 }
